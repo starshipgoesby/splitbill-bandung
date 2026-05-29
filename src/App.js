@@ -145,7 +145,7 @@ function DetailModal({ expense, members, onClose }) {
       if (p) { setPhoto(p); setPhotoState("ok"); }
       else setPhotoState("missing");
     }).catch(() => setPhotoState("missing"));
-  }, [expense.id]);
+  }, [expense.id, expense.hasReceipt]);
 
   const nameOf  = (id) => members.find((m) => m.id === id)?.name  || "?";
   const colorOf = (id) => members.find((m) => m.id === id)?.color || "#999";
