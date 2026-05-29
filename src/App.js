@@ -270,7 +270,7 @@ function ScanModal({ members, onClose, onSave }) {
       setPhoto(dataUrl);
       const b64 = dataUrl.split(",")[1];
       const prompt = 'Kamu parser struk belanja. Balas HANYA JSON minified valid tanpa markdown. Skema: {"merchant":string,"items":[{"name":string,"price":number}],"tax":number,"service":number,"discount":number,"total":number}. price = total harga baris dalam rupiah, angka bulat. tax=pajak/PB1, service=service charge, discount=diskon positif. Jika tidak ada isi 0.';
-      const res  = await fetch("https://api.anthropic.com/v1/messages", {
+      const res  = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
