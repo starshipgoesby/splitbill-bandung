@@ -102,79 +102,58 @@ const CATEGORIES = [
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[5];
 
-// Compress image tapi tetap jaga teks struk tetap jelas
-async function compressReceiptImage(
-  file,
-  {
-    maxSizeKB = 450,
-    maxDim = 1600,
-    minQuality = 0.6,
-    startQuality = 0.92
-  } = {}
-) {
+// ======================
+// Compress Image Helper
+// ======================
+function compressImage(file, maxDim = 1600, quality = 0.92) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
     reader.onload = () => {
       const img = new Image();
 
-      img.onload = async () => {
-        let width = img.width;
-        let height = img.height;
+      img.onload = () => {
+        // Resize seperlunya aja biar struk tetap jelas
+        const scale = Math.min(
+          1,
+          maxDim / Math.max(img.width, img.height)
+        );
 
-        // Resize hanya kalau terlalu besar
-        if (Math.max(width, height) > maxDim) {
-          const scale = maxDim / Math.max(width, height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
-        }
+        const width = Math.round(img.width * scale);
+        const height = Math.round(img.height * scale);
 
         const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-
         canvas.width = width;
         canvas.height = height;
 
-        // Penting buat teks struk biar lebih tajam
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
+        const ctx = canvas.getContext("2d");
 
-        ctx.fillStyle = "#fff";
+        // Background putih
+        ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, width, height);
 
         ctx.drawImage(img, 0, 0, width, height);
 
-        let quality = startQuality;
-        let dataUrl = canvas.toDataURL("image/jpeg", quality);
+        let currentQuality = quality;
 
-        // Hitung size base64
-        const getSizeKB = (base64) => {
-          return Math.round((base64.length * 3 / 4) / 1024);
-        };
+        // Compress ringan aja
+        let dataUrl = canvas.toDataURL(
+          "image/jpeg",
+          currentQuality
+        );
 
-        // Turunin quality pelan-pelan
+        // Maksimal sekitar 1.8MB
         while (
-          getSizeKB(dataUrl) > maxSizeKB &&
-          quality > minQuality
+          dataUrl.length > 1800000 &&
+          currentQuality > 0.75
         ) {
-          quality -= 0.04;
-          dataUrl = canvas.toDataURL("image/jpeg", quality);
+          currentQuality -= 0.03;
+
+          dataUrl = canvas.toDataURL(
+            "image/jpeg",
+            currentQuality
+          );
         }
-
-        // Kalau masih kegedean -> resize dikit
-        while (getSizeKB(dataUrl) > maxSizeKB && width > 900) {
-          width = Math.round(width * 0.9);
-          height = Math.round(height * 0.9);
-
-          canvas.width = width;
-          canvas.height = height;
-
-          ctx.drawImage(img, 0, 0, width, height);
-
-          dataUrl = canvas.toDataURL("image/jpeg", quality);
-        }
-
-        console.log("Final size:", getSizeKB(dataUrl), "KB");
 
         resolve(dataUrl);
       };
@@ -186,6 +165,27 @@ async function compressReceiptImage(
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// ======================
+// Example Usage
+// ======================
+async function handleUpload(e) {
+  const file = e.target.files[0];
+
+  if (!file) return;
+
+  try {
+    const compressed = await compressImage(file);
+
+    console.log(compressed);
+
+    // contoh set state
+    // setImage(compressed);
+
+  } catch (err) {
+    console.error("Compress error:", err);
+  }
 }
 
 function equalSharesFrom(e) {
