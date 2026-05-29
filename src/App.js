@@ -102,45 +102,79 @@ const CATEGORIES = [
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[5];
 
-// Compress image tapi tetap jaga tulisan struk tetap jelas
-function compressImage(file, maxDim = 1600, quality = 0.9) {
+// Compress image tapi tetap jaga teks struk tetap jelas
+async function compressReceiptImage(
+  file,
+  {
+    maxSizeKB = 450,
+    maxDim = 1600,
+    minQuality = 0.6,
+    startQuality = 0.92
+  } = {}
+) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
     reader.onload = () => {
       const img = new Image();
 
-      img.onload = () => {
-        // resize hanya kalau terlalu besar
-        const scale = Math.min(
-          1,
-          maxDim / Math.max(img.width, img.height)
-        );
+      img.onload = async () => {
+        let width = img.width;
+        let height = img.height;
 
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
+        // Resize hanya kalau terlalu besar
+        if (Math.max(width, height) > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
 
         const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-
         const ctx = canvas.getContext("2d");
 
-        // bikin text lebih tajam
+        canvas.width = width;
+        canvas.height = height;
+
+        // Penting buat teks struk biar lebih tajam
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
 
-        ctx.drawImage(img, 0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, width, height);
 
-        // jangan compress terlalu rendah
-        let q = quality;
-        let dataUrl = canvas.toDataURL("image/jpeg", q);
+        ctx.drawImage(img, 0, 0, width, height);
 
-        // target max ~1.5MB
-        while (dataUrl.length > 2000000 && q > 0.75) {
-          q -= 0.03;
-          dataUrl = canvas.toDataURL("image/jpeg", q);
+        let quality = startQuality;
+        let dataUrl = canvas.toDataURL("image/jpeg", quality);
+
+        // Hitung size base64
+        const getSizeKB = (base64) => {
+          return Math.round((base64.length * 3 / 4) / 1024);
+        };
+
+        // Turunin quality pelan-pelan
+        while (
+          getSizeKB(dataUrl) > maxSizeKB &&
+          quality > minQuality
+        ) {
+          quality -= 0.04;
+          dataUrl = canvas.toDataURL("image/jpeg", quality);
         }
+
+        // Kalau masih kegedean -> resize dikit
+        while (getSizeKB(dataUrl) > maxSizeKB && width > 900) {
+          width = Math.round(width * 0.9);
+          height = Math.round(height * 0.9);
+
+          canvas.width = width;
+          canvas.height = height;
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          dataUrl = canvas.toDataURL("image/jpeg", quality);
+        }
+
+        console.log("Final size:", getSizeKB(dataUrl), "KB");
 
         resolve(dataUrl);
       };
