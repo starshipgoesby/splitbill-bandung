@@ -113,7 +113,7 @@ function compressImage(file, maxDim = 1600, quality = 0.92) {
       const img = new Image();
 
       img.onload = () => {
-        // Resize seperlunya aja biar struk tetap jelas
+        // Resize seperlunya aja supaya struk tetap jelas
         const scale = Math.min(
           1,
           maxDim / Math.max(img.width, img.height)
@@ -136,7 +136,7 @@ function compressImage(file, maxDim = 1600, quality = 0.92) {
 
         let currentQuality = quality;
 
-        // Compress ringan aja
+        // Compress ringan
         let dataUrl = canvas.toDataURL(
           "image/jpeg",
           currentQuality
@@ -168,25 +168,35 @@ function compressImage(file, maxDim = 1600, quality = 0.92) {
 }
 
 // ======================
-// Example Usage
+// Upload Handler
 // ======================
-async function handleUpload(e) {
+const handleFileChange = async (e) => {
   const file = e.target.files[0];
 
   if (!file) return;
 
   try {
-    const compressed = await compressImage(file);
+    // Compress image
+    const compressedImage = await compressImage(file);
 
-    console.log(compressed);
+    // Simpan ke state
+    setReceiptImage(compressedImage);
 
-    // contoh set state
-    // setImage(compressed);
+    console.log("Image compressed successfully");
 
   } catch (err) {
     console.error("Compress error:", err);
   }
-}
+};
+
+// ======================
+// Input Upload
+// ======================
+<input
+  type="file"
+  accept="image/*"
+  onChange={handleFileChange}
+/>
 
 function equalSharesFrom(e) {
   const s = {}, list = e.splitAmong || [];
