@@ -270,19 +270,13 @@ function ScanModal({ members, onClose, onSave }) {
       setPhoto(dataUrl);
       const b64 = dataUrl.split(",")[1];
       const prompt = 'Kamu parser struk belanja. Balas HANYA JSON minified valid tanpa markdown. Skema: {"merchant":string,"items":[{"name":string,"price":number}],"tax":number,"service":number,"discount":number,"total":number}. price = total harga baris dalam rupiah, angka bulat. tax=pajak/PB1, service=service charge, discount=diskon positif. Jika tidak ada isi 0.';
-      const res  = await fetch("/api/scan", {
+      const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 1000,
-          messages: [{ role: "user", content: [
-            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
-            { type: "text", text: prompt },
-          ]}],
-        }),
+        body: JSON.stringify({ b64, prompt }),
       });
       const data = await res.json();
-      const text = (data.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
+      const text = data.text || "";
       const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
       setMerchant(parsed.merchant || "Struk");
       setItems((parsed.items || []).map((it) => ({
