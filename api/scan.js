@@ -1,8 +1,14 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const { b64, prompt } = req.body;
   const apiKey = process.env.GEMINI_API_KEY;
+  
+  // Debug: cek apakah key ada
+  if (!apiKey) {
+    return res.status(500).json({ error: "GEMINI_API_KEY tidak ditemukan" });
+  }
+
+  const { b64, prompt } = req.body;
 
   try {
     const response = await fetch(
