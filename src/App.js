@@ -102,30 +102,53 @@ const CATEGORIES = [
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[5];
 
-// Compress to ~400KB max
-function compressImage(file, maxDim = 900, quality = 0.72) {
+// Compress image tapi tetap jaga tulisan struk tetap jelas
+function compressImage(file, maxDim = 1600, quality = 0.9) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+
     reader.onload = () => {
       const img = new Image();
+
       img.onload = () => {
-        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        // resize hanya kalau terlalu besar
+        const scale = Math.min(
+          1,
+          maxDim / Math.max(img.width, img.height)
+        );
+
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+
         const canvas = document.createElement("canvas");
-        canvas.width = w; canvas.height = h;
-        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        // Try to get under ~400KB
+        canvas.width = w;
+        canvas.height = h;
+
+        const ctx = canvas.getContext("2d");
+
+        // bikin text lebih tajam
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // jangan compress terlalu rendah
         let q = quality;
         let dataUrl = canvas.toDataURL("image/jpeg", q);
-        while (dataUrl.length > 550000 && q > 0.4) {
-          q -= 0.08;
+
+        // target max ~1.5MB
+        while (dataUrl.length > 2000000 && q > 0.75) {
+          q -= 0.03;
           dataUrl = canvas.toDataURL("image/jpeg", q);
         }
+
         resolve(dataUrl);
       };
+
       img.onerror = reject;
       img.src = reader.result;
     };
+
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
