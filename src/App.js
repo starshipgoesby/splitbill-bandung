@@ -83,24 +83,47 @@ const CATEGORIES = [
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[5];
 
-// Compress to ~400KB max
-function compressImage(file, maxDim = 900, quality = 0.72) {
+// Read file as data URL (no compression)
+function readAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Prepare image for AI scan — keep HIGH QUALITY for accurate text recognition.
+// Only resize/compress if needed to fit AI API limits (~5MB).
+function prepareForAI(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        // Start with original dimensions, high quality
+        const MAX_BYTES = 4_500_000; // base64 ~5MB cap for AI API
+        let maxDim = Math.max(img.width, img.height);
+        let quality = 0.92;
         const canvas = document.createElement("canvas");
-        canvas.width = w; canvas.height = h;
-        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        // Try to get under ~400KB
-        let q = quality;
-        let dataUrl = canvas.toDataURL("image/jpeg", q);
-        while (dataUrl.length > 550000 && q > 0.4) {
-          q -= 0.08;
-          dataUrl = canvas.toDataURL("image/jpeg", q);
+        const ctx = canvas.getContext("2d");
+
+        const render = (dim, q) => {
+          const scale = Math.min(1, dim / Math.max(img.width, img.height));
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          return canvas.toDataURL("image/jpeg", q);
+        };
+
+        let dataUrl = render(maxDim, quality);
+        // Only shrink if exceeding API limit
+        while (dataUrl.length > MAX_BYTES) {
+          if (quality > 0.7) quality -= 0.05;
+          else if (maxDim > 1400) maxDim -= 200;
+          else if (quality > 0.5) quality -= 0.05;
+          else break;
+          dataUrl = render(maxDim, quality);
         }
         resolve(dataUrl);
       };
@@ -449,9 +472,12 @@ function ScanModal({ members, onClose, onSave, t }) {
     if (!file) return;
     try {
       setStep("loading");
-      const dataUrl = await compressImage(file);
-      setPhoto(dataUrl);
-      const b64 = dataUrl.split(",")[1];
+      // Save ORIGINAL photo (no compression) for archive
+      const originalUrl = await readAsDataURL(file);
+      setPhoto(originalUrl);
+      // High-quality version for AI scanning (accurate text recognition)
+      const aiUrl = await prepareForAI(file);
+      const b64 = aiUrl.split(",")[1];
       const prompt = 'Kamu parser struk belanja. Balas HANYA JSON minified valid tanpa markdown. Skema: {"merchant":string,"items":[{"name":string,"price":number}],"tax":number,"service":number,"discount":number,"total":number}. price = total harga baris dalam rupiah, angka bulat. Jika tidak ada isi 0.';
       const res = await fetch("/api/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ b64, prompt }) });
       const data = await res.json();
