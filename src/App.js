@@ -3,7 +3,7 @@ import {
   Plus, Trash2, Receipt, Scale, X, ArrowRight, Check, Camera,
   Sparkles, Loader2, CreditCard, ChevronRight, Share2, Pencil, Moon, Sun,
   UtensilsCrossed, Car, BedDouble, ShoppingBag, Music, MoreHorizontal, ChevronDown,
-  Download, Link2,
+  Download, Link2, Phone, History, BarChart3, Trophy, Target,
 } from "lucide-react";
 
 // ── Supabase ──────────────────────────────────────────────────────────
@@ -74,6 +74,16 @@ const removeMyTripId = (id) => {
 const rp = (n) => "Rp " + Math.round(n || 0).toLocaleString("id-ID");
 const palette = ["#ea580c","#16a34a","#ca8a04","#2563eb","#9333ea","#db2777","#0d9488","#a16207"];
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+// Get/set current device user identity (who am I in this device?)
+const myIdKey = "sb-my-id";
+const getMyId = () => { try { return localStorage.getItem(myIdKey) || ""; } catch { return ""; } };
+const setMyId = (id) => { try { localStorage.setItem(myIdKey, id); } catch {} };
+
+// Onboarding completion flag
+const onboardKey = "sb-onboarded";
+const isOnboarded = () => { try { return localStorage.getItem(onboardKey) === "1"; } catch { return false; } };
+const setOnboarded = () => { try { localStorage.setItem(onboardKey, "1"); } catch {} };
 
 const CATEGORIES = [
   { id: "makan",      label: "Makan",      icon: UtensilsCrossed, color: "#ea580c" },
@@ -180,6 +190,44 @@ function settle(members, expenses) {
   return { balances, tx };
 }
 
+function computeStats(members, expenses) {
+  // Per-category totals
+  const byCategory = {};
+  CATEGORIES.forEach((c) => (byCategory[c.id] = 0));
+  expenses.forEach((e) => {
+    const cat = e.category || "lainnya";
+    byCategory[cat] = (byCategory[cat] || 0) + e.amount;
+  });
+
+  // Per-day totals
+  const byDay = {};
+  expenses.forEach((e) => {
+    const d = new Date(e.at || Date.now());
+    const key = d.toISOString().slice(0, 10);
+    byDay[key] = (byDay[key] || 0) + e.amount;
+  });
+
+  // Per-person stats
+  const paidBy = {};
+  const consumedBy = {};
+  members.forEach((m) => { paidBy[m.id] = 0; consumedBy[m.id] = 0; });
+  expenses.forEach((e) => {
+    if (paidBy[e.paidBy] != null) paidBy[e.paidBy] += e.amount;
+    Object.entries(e.shares || {}).forEach(([id, v]) => {
+      if (consumedBy[id] != null) consumedBy[id] += v;
+    });
+  });
+
+  // Single most expensive expense
+  const mostExpensive = expenses.length
+    ? expenses.reduce((a, b) => a.amount > b.amount ? a : b)
+    : null;
+
+  const total = expenses.reduce((s, e) => s + e.amount, 0);
+
+  return { byCategory, byDay, paidBy, consumedBy, mostExpensive, total };
+}
+
 function buildCSV(tripName, members, expenses, balances, tx) {
   const nameOf = (id) => members.find((m) => m.id === id)?.name || "?";
   const esc = (v) => {
@@ -249,6 +297,21 @@ function buildCSV(tripName, members, expenses, balances, tx) {
   return lines.join("\n");
 }
 
+// Format WhatsApp number: convert 0812... -> 62812..., remove non-digits
+function formatWANumber(input) {
+  if (!input) return "";
+  let digits = String(input).replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = "62" + digits.slice(1);
+  if (digits.startsWith("8")) digits = "62" + digits;
+  return digits;
+}
+
+// Build per-person WA message
+function buildWAPersonal(t1, fromName, toName, amount, account) {
+  const acct = account ? `\n\nKirim ke:\n${account}` : "";
+  return `Halo ${fromName}, dari ringkasan ${t1}, kamu perlu transfer *${rp(amount)}* ke *${toName}*.${acct}\n\nThanks!`;
+}
+
 function buildWAText(tripName, members, expenses, tx) {
   const nameOf = (id) => members.find((m) => m.id === id)?.name || "?";
   const total = expenses.reduce((s, e) => s + e.amount, 0);
@@ -301,6 +364,36 @@ const T = {
     danger: "#f87171", success: "#4ade80",
   },
 };
+
+// ── Skeleton loader ───────────────────────────────────────────────────
+function Skeleton({ t, w = "100%", h = 14, br = 6, mt = 0 }) {
+  return (
+    <div style={{
+      width: w, height: h, borderRadius: br, marginTop: mt,
+      background: `linear-gradient(90deg, ${t.subtle} 0%, ${t.border} 50%, ${t.subtle} 100%)`,
+      backgroundSize: "200% 100%", animation: "shimmer 1.5s infinite linear",
+    }} />
+  );
+}
+
+function AppSkeleton({ t }) {
+  return (
+    <div style={{ padding: 20 }}>
+      <Skeleton t={t} w="40%" h={14} />
+      <Skeleton t={t} w="65%" h={32} mt={14} br={8} />
+      <Skeleton t={t} w="50%" h={24} mt={6} />
+      <div style={{ height: 28 }} />
+      <Skeleton t={t} w="25%" h={11} />
+      <Skeleton t={t} w="100%" h={60} mt={10} br={12} />
+      <Skeleton t={t} w="100%" h={42} mt={8} br={10} />
+      <div style={{ height: 28 }} />
+      <Skeleton t={t} w="100%" h={48} mt={8} br={11} />
+      <Skeleton t={t} w="100%" h={64} mt={12} br={12} />
+      <Skeleton t={t} w="100%" h={64} mt={1} br={12} />
+      <Skeleton t={t} w="100%" h={64} mt={1} br={12} />
+    </div>
+  );
+}
 
 // ── Avatar circle ─────────────────────────────────────────────────────
 function Avatar({ name, color, size = 28 }) {
@@ -684,6 +777,7 @@ function ScanModal({ members, onClose, onSave, t }) {
   const [paidBy, setPaidBy]     = useState(members[0]?.id || "");
   const [category, setCat]      = useState("makan");
   const [photoUrl, setPhoto]    = useState(null);
+  const [scanWarning, setScanWarning] = useState("");
   const fileRef = useRef();
 
   const handleFile = async (file) => {
@@ -694,13 +788,50 @@ function ScanModal({ members, onClose, onSave, t }) {
       setPhoto(originalUrl);
       const aiUrl = await prepareForAI(file);
       const b64 = aiUrl.split(",")[1];
-      const prompt = 'Kamu parser struk belanja. Balas HANYA JSON minified valid tanpa markdown. Skema: {"merchant":string,"items":[{"name":string,"price":number}],"tax":number,"service":number,"discount":number,"total":number}. price = total harga baris dalam rupiah, angka bulat. Jika tidak ada isi 0.';
+      const prompt = `Kamu parser struk belanja Indonesia yang SANGAT TELITI. Output HANYA JSON minified valid tanpa markdown/code fence.
+
+Skema: {"merchant":string,"items":[{"name":string,"qty":number,"price":number}],"tax":number,"service":number,"discount":number,"subtotal":number,"total":number}
+
+ATURAN WAJIB (sangat penting, jangan dilanggar):
+1. "price" = TOTAL HARGA BARIS (qty × harga satuan). Bukan harga satuan. Contoh: "4x Nasi Putih @5000 = 20000" → price=20000, qty=4
+2. "qty" = jumlah item per baris (default 1 jika tidak tertulis)
+3. Untuk struk dengan format "qty x harga = total", AMBIL ANGKA TOTAL di kolom paling kanan, bukan harga satuan
+4. Untuk struk dengan format "qty x harga_satuan" tanpa total, hitung sendiri qty × harga_satuan
+5. ABAIKAN baris yang bukan item: "Subtotal", "Total", "Cash", "QRIS", "Kembali", "Change", "Tender", "Tax", "Service", "PPN", "PB1", "DPP", "Discount"
+6. Untuk pajak/service/diskon, ekstrak nilainya ke field "tax"/"service"/"discount" (bukan ke items)
+7. "subtotal" = jumlah semua items SEBELUM pajak/service/diskon
+8. "total" = nilai TOTAL FINAL yang tertulis di struk (di kolom kanan baris "Total"/"Total Paid"/"Grand Total")
+9. VERIFIKASI: subtotal + tax + service - discount HARUS SAMA dengan total. Jika tidak match, cek ulang items.
+10. Nama item: gunakan persis yang tertulis di struk. Singkat tapi lengkap.
+11. Semua harga dalam rupiah, angka bulat (integer), tanpa "Rp" atau titik/koma.
+12. Jika tidak yakin, lebih baik nilai 0 daripada salah angka.
+
+Periksa hasil sebelum balas: pastikan jumlah items.price + tax + service - discount === total.`;
       const res = await fetch("/api/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ b64, prompt }) });
       const data = await res.json();
       const parsed = JSON.parse((data.text || "").replace(/```json|```/g, "").trim());
       setMerchant(parsed.merchant || "Struk");
-      setItems((parsed.items || []).map((it) => ({ id: uid(), name: it.name || "Item", price: Math.round(Number(it.price)||0), who: members.map((m) => m.id) })));
-      setCharges({ tax: Math.round(Number(parsed.tax)||0), service: Math.round(Number(parsed.service)||0), discount: Math.round(Number(parsed.discount)||0) });
+      const parsedItems = (parsed.items || []).map((it) => {
+        const qty = Math.max(1, Math.round(Number(it.qty) || 1));
+        const price = Math.round(Number(it.price) || 0);
+        const baseName = it.name || "Item";
+        const displayName = qty > 1 ? `${baseName} ×${qty}` : baseName;
+        return { id: uid(), name: displayName, price, who: members.map((m) => m.id) };
+      });
+      setItems(parsedItems);
+      const tax      = Math.round(Number(parsed.tax)||0);
+      const service  = Math.round(Number(parsed.service)||0);
+      const discount = Math.round(Number(parsed.discount)||0);
+      setCharges({ tax, service, discount });
+      // Verify total
+      const itemsSum = parsedItems.reduce((s, it) => s + it.price, 0);
+      const expectedTotal = itemsSum + tax + service - discount;
+      const declaredTotal = Math.round(Number(parsed.total) || 0);
+      if (declaredTotal > 0 && Math.abs(expectedTotal - declaredTotal) > 100) {
+        setScanWarning(`AI: total ${rp(expectedTotal)}, struk: ${rp(declaredTotal)} — selisih ${rp(Math.abs(expectedTotal - declaredTotal))}. Cek item.`);
+      } else {
+        setScanWarning("");
+      }
       setStep("review");
     } catch { setErrMsg("Tidak bisa membaca struk. Coba foto yang lebih jelas."); setStep("error"); }
   };
@@ -758,6 +889,11 @@ function ScanModal({ members, onClose, onSave, t }) {
             </div>
             {photoUrl && <div style={{ marginBottom: 14, borderRadius: 10, overflow: "hidden", maxHeight: 120, border: `1px solid ${t.border}` }}><img src={photoUrl} alt="Struk" style={{ width: "100%", objectFit: "cover", display: "block", maxHeight: 120 }} /></div>}
             <input value={merchant} onChange={(e) => setMerchant(e.target.value)} style={{ ...inputSt(t), fontSize: 18, fontWeight: 600 }} />
+            {scanWarning && (
+              <div style={{ marginTop: 10, padding: "10px 12px", background: "#fef3c7", border: "1px solid #fbbf24", borderRadius: 8, fontSize: 12.5, color: "#92400e", lineHeight: 1.5 }}>
+                ⚠️ {scanWarning}
+              </div>
+            )}
             <div style={labelSt(t)}>Kategori</div>
             <CatChips value={category} onChange={setCat} t={t} />
             <div style={{ ...labelSt(t), display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -854,6 +990,345 @@ function ManualModal({ members, onClose, onSave, t }) {
   );
 }
 
+
+// ── Onboarding Modal ──────────────────────────────────────────────────
+function OnboardingModal({ onClose, t }) {
+  const [step, setStep] = useState(0);
+  const steps = [
+    {
+      icon: Users,
+      title: "Tambah anggota dulu",
+      desc: "Masukkan nama teman-teman yang ikut patungan. Bisa juga simpan rekening untuk transfer nanti.",
+    },
+    {
+      icon: Camera,
+      title: "Scan struk atau input manual",
+      desc: "Foto struk akan dibaca AI otomatis. Bisa juga input manual untuk pengeluaran tanpa struk seperti bensin atau parkir.",
+    },
+    {
+      icon: Scale,
+      title: "Lihat siapa transfer ke siapa",
+      desc: "Tab Saldo menampilkan posisi tiap orang dan saran transfer minimal. Bisa share ringkasan ke WhatsApp.",
+    },
+  ];
+  const Icon = steps[step].icon;
+  const isLast = step === steps.length - 1;
+  return (
+    <div style={ov}>
+      <div style={modalSt(t)}>
+        <div style={{ textAlign: "center", padding: "20px 8px" }}>
+          <div style={{ width: 64, height: 64, borderRadius: 18, background: t.accentSoft, color: t.accent, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px" }}>
+            <Icon size={30} strokeWidth={2} />
+          </div>
+          <h3 style={{ ...mTitle(t), fontSize: 22, marginBottom: 8 }}>{steps[step].title}</h3>
+          <p style={{ color: t.muted, fontSize: 14, margin: "0 0 22px", lineHeight: 1.6, padding: "0 8px" }}>{steps[step].desc}</p>
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 20 }}>
+            {steps.map((_, i) => (
+              <span key={i} style={{ width: i === step ? 18 : 6, height: 6, borderRadius: 6, background: i === step ? t.accent : t.border, transition: "all .2s" }} />
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {step > 0 ? (
+              <button onClick={() => setStep(step - 1)} style={btnSecondary(t)}>Kembali</button>
+            ) : (
+              <button onClick={onClose} style={btnSecondary(t)}>Lewati</button>
+            )}
+            <button onClick={() => isLast ? onClose() : setStep(step + 1)} style={btnPrimary(t)}>
+              {isLast ? "Mulai" : "Lanjut"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Stats Modal ───────────────────────────────────────────────────────
+function StatsModal({ tripName, members, expenses, onClose, t }) {
+  const stats = useMemo(() => computeStats(members, expenses), [members, expenses]);
+  const [budget, setBudget] = useState(() => {
+    try { return parseInt(localStorage.getItem(`sb-budget-${tripName}`) || "0", 10) || 0; } catch { return 0; }
+  });
+  const [editBudget, setEditBudget] = useState(false);
+  const [budgetInput, setBudgetInput] = useState("");
+
+  const saveBudget = () => {
+    const n = parseInt(budgetInput.replace(/\D/g, ""), 10) || 0;
+    setBudget(n);
+    try { localStorage.setItem(`sb-budget-${tripName}`, String(n)); } catch {}
+    setEditBudget(false);
+  };
+
+  const nameOf = (id) => members.find((m) => m.id === id)?.name || "?";
+  const colorOf = (id) => members.find((m) => m.id === id)?.color || "#999";
+
+  // Max for scaling
+  const maxCat = Math.max(...Object.values(stats.byCategory), 1);
+  const maxDay = Math.max(...Object.values(stats.byDay), 1);
+  const maxPaid = Math.max(...Object.values(stats.paidBy), 1);
+
+  // Sort categories by amount desc
+  const sortedCats = CATEGORIES
+    .map((c) => ({ ...c, amount: stats.byCategory[c.id] || 0 }))
+    .filter((c) => c.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+
+  const days = Object.entries(stats.byDay).sort(([a], [b]) => a.localeCompare(b));
+
+  const topPayer = members
+    .map((m) => ({ ...m, amount: stats.paidBy[m.id] || 0 }))
+    .filter((m) => m.amount > 0)
+    .sort((a, b) => b.amount - a.amount)[0];
+
+  const topSpender = members
+    .map((m) => ({ ...m, amount: stats.consumedBy[m.id] || 0 }))
+    .filter((m) => m.amount > 0)
+    .sort((a, b) => b.amount - a.amount)[0];
+
+  const budgetRemaining = budget - stats.total;
+  const budgetPct = budget > 0 ? Math.min(100, (stats.total / budget) * 100) : 0;
+
+  return (
+    <div style={ov} onClick={onClose}>
+      <div style={{ ...modalSt(t), maxHeight: "92vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={mTitle(t)}>Statistik</h3>
+          <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
+        </div>
+
+        {/* Total + Budget */}
+        <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 14, padding: "16px 18px", marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: t.muted, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>Total pengeluaran</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: t.text, marginTop: 2, ...num, letterSpacing: -0.5 }}>{rp(stats.total)}</div>
+          {editBudget ? (
+            <div style={{ marginTop: 12 }}>
+              <input autoFocus value={budgetInput ? parseInt(budgetInput.replace(/\D/g,"")||"0",10).toLocaleString("id-ID") : ""}
+                onChange={(e) => setBudgetInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveBudget()}
+                placeholder="Budget total trip" inputMode="numeric"
+                style={{ ...inputSt(t), padding: "8px 10px", fontSize: 14, ...num }} />
+              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                <button onClick={() => setEditBudget(false)} style={{ ...btnSecondary(t), padding: "8px 12px", fontSize: 13 }}>Batal</button>
+                <button onClick={saveBudget} style={{ ...btnPrimary(t), padding: "8px 12px", fontSize: 13 }}>Simpan</button>
+              </div>
+            </div>
+          ) : budget > 0 ? (
+            <>
+              <div style={{ marginTop: 12, height: 6, background: t.border, borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${budgetPct}%`, background: budgetPct >= 100 ? "#dc2626" : budgetPct >= 80 ? "#f59e0b" : t.success, transition: "width .3s" }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 12.5, color: t.muted }}>
+                <span>Budget: <b style={{ color: t.text, ...num }}>{rp(budget)}</b></span>
+                <span onClick={() => { setBudgetInput(String(budget)); setEditBudget(true); }} style={{ cursor: "pointer", color: t.accent, fontWeight: 600 }}>
+                  {budgetRemaining >= 0 ? `Sisa ${rp(budgetRemaining)}` : `Lewat ${rp(-budgetRemaining)}`}
+                </span>
+              </div>
+            </>
+          ) : (
+            <button onClick={() => { setBudgetInput(""); setEditBudget(true); }} style={{ marginTop: 10, padding: "6px 10px", background: "transparent", border: `1px dashed ${t.border}`, borderRadius: 8, color: t.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <Target size={12} /> Set budget trip
+            </button>
+          )}
+        </div>
+
+        {expenses.length === 0 ? (
+          <div style={emptyStyle(t)}>Belum ada data untuk statistik</div>
+        ) : (
+          <>
+            {/* Top achievements */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+              {topPayer && (
+                <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 10.5, color: t.muted, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 4 }}>
+                    <Trophy size={11} /> Paling nalangin
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                    <Avatar name={topPayer.name} color={topPayer.color} size={22} />
+                    <span style={{ fontWeight: 600, fontSize: 14, color: t.text }}>{topPayer.name}</span>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: t.text, marginTop: 4, ...num }}>{rp(topPayer.amount)}</div>
+                </div>
+              )}
+              {topSpender && (
+                <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 10.5, color: t.muted, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 4 }}>
+                    <Receipt size={11} /> Konsumsi terbesar
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                    <Avatar name={topSpender.name} color={topSpender.color} size={22} />
+                    <span style={{ fontWeight: 600, fontSize: 14, color: t.text }}>{topSpender.name}</span>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: t.text, marginTop: 4, ...num }}>{rp(topSpender.amount)}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Categories breakdown */}
+            <div style={labelSt(t)}>Per kategori</div>
+            <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: "10px 14px" }}>
+              {sortedCats.map((c) => {
+                const pct = (c.amount / stats.total) * 100;
+                return (
+                  <div key={c.id} style={{ padding: "8px 0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, color: t.text, fontSize: 13.5, fontWeight: 500 }}>
+                        <c.icon size={13} style={{ color: c.color }} />
+                        {c.label}
+                      </span>
+                      <span style={{ fontWeight: 600, fontSize: 13.5, color: t.text, ...num }}>
+                        {rp(c.amount)} <span style={{ color: t.muted, fontSize: 11.5, fontWeight: 500 }}>({pct.toFixed(0)}%)</span>
+                      </span>
+                    </div>
+                    <div style={{ height: 5, background: t.subtle, borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${(c.amount / maxCat) * 100}%`, background: c.color, transition: "width .3s" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Per-day */}
+            {days.length > 1 && (
+              <>
+                <div style={labelSt(t)}>Per hari</div>
+                <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: "10px 14px" }}>
+                  {days.map(([day, amount]) => {
+                    const d = new Date(day);
+                    const dayLabel = d.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" });
+                    return (
+                      <div key={day} style={{ padding: "8px 0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                          <span style={{ color: t.text, fontSize: 13, fontWeight: 500 }}>{dayLabel}</span>
+                          <span style={{ fontWeight: 600, fontSize: 13.5, color: t.text, ...num }}>{rp(amount)}</span>
+                        </div>
+                        <div style={{ height: 5, background: t.subtle, borderRadius: 3, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${(amount / maxDay) * 100}%`, background: t.accent, transition: "width .3s" }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {/* Per-payer */}
+            <div style={labelSt(t)}>Siapa nalangin berapa</div>
+            <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: "10px 14px" }}>
+              {members.map((m) => {
+                const amt = stats.paidBy[m.id] || 0;
+                if (amt === 0) return null;
+                return (
+                  <div key={m.id} style={{ padding: "8px 0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Avatar name={m.name} color={m.color} size={20} />
+                        <span style={{ color: t.text, fontSize: 13.5, fontWeight: 500 }}>{m.name}</span>
+                      </span>
+                      <span style={{ fontWeight: 600, fontSize: 13.5, color: t.text, ...num }}>{rp(amt)}</span>
+                    </div>
+                    <div style={{ height: 5, background: t.subtle, borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${(amt / maxPaid) * 100}%`, background: m.color, transition: "width .3s" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Most expensive */}
+            {stats.mostExpensive && (
+              <>
+                <div style={labelSt(t)}>Pengeluaran terbesar</div>
+                <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14.5, color: t.text }}>{stats.mostExpensive.desc}</div>
+                      <div style={{ fontSize: 12, color: t.muted, marginTop: 2 }}>oleh {nameOf(stats.mostExpensive.paidBy)}</div>
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: 16, color: t.text, ...num }}>{rp(stats.mostExpensive.amount)}</div>
+                  </div>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Activity Log Modal ────────────────────────────────────────────────
+function ActivityModal({ activity, members, onClose, t }) {
+  const nameOf = (id) => members.find((m) => m.id === id)?.name || id || "?";
+  const colorOf = (id) => members.find((m) => m.id === id)?.color || "#999";
+  return (
+    <div style={ov} onClick={onClose}>
+      <div style={{ ...modalSt(t), maxHeight: "85vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={mTitle(t)}>Riwayat aktivitas</h3>
+          <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
+        </div>
+        {(!activity || activity.length === 0) ? (
+          <div style={emptyStyle(t)}>Belum ada aktivitas yang tercatat</div>
+        ) : (
+          <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+            {activity.slice().reverse().slice(0, 100).map((a, idx, arr) => {
+              const date = new Date(a.at);
+              const dateStr = date.toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+              const memberId = a.by;
+              return (
+                <div key={idx} style={{ padding: "12px 14px", borderTop: idx > 0 ? `1px solid ${t.divider}` : "none", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <Avatar name={nameOf(memberId)} color={colorOf(memberId)} size={26} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, color: t.text, lineHeight: 1.4 }}>
+                      <b style={{ color: colorOf(memberId) }}>{nameOf(memberId)}</b>{" "}
+                      <span style={{ color: t.textSoft }}>{a.action}</span>
+                      {a.target && <span style={{ color: t.text, fontWeight: 500 }}> "{a.target}"</span>}
+                      {a.amount != null && <span style={{ color: t.text, fontWeight: 600, ...num }}> · {rp(a.amount)}</span>}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: t.muted, marginTop: 2 }}>{dateStr}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {activity?.length > 100 && (
+          <div style={{ marginTop: 10, textAlign: "center", fontSize: 12, color: t.muted }}>Hanya 100 terbaru ditampilkan</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Identity Picker Modal ─────────────────────────────────────────────
+function IdentityPicker({ members, currentId, onSelect, onSkip, t }) {
+  return (
+    <div style={ov}>
+      <div style={modalSt(t)}>
+        <h3 style={{ ...mTitle(t), marginBottom: 8 }}>Saya yang mana?</h3>
+        <p style={{ color: t.muted, fontSize: 13.5, margin: "0 0 14px", lineHeight: 1.5 }}>
+          Pilih nama kamu di trip ini. Berguna untuk pencatatan aktivitas (siapa input apa) dan notifikasi WA personal.
+        </p>
+        <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
+          {members.map((m, idx) => (
+            <button key={m.id} onClick={() => onSelect(m.id)} style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+              borderTop: idx > 0 ? `1px solid ${t.divider}` : "none",
+              background: currentId === m.id ? t.accentSoft : "transparent",
+              border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+            }}>
+              <Avatar name={m.name} color={m.color} size={28} />
+              <span style={{ fontWeight: 600, color: currentId === m.id ? t.accent : t.text, flex: 1 }}>{m.name}</span>
+              {currentId === m.id && <Check size={16} style={{ color: t.accent }} />}
+            </button>
+          ))}
+        </div>
+        <button onClick={onSkip} style={{ ...btnSecondary(t), width: "100%" }}>Lewati</button>
+      </div>
+    </div>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────────────
 export default function App() {
   const [dark, toggleDark] = useDark();
@@ -883,7 +1358,13 @@ export default function App() {
   const [editAcct, setEditAcct] = useState(null);
   const [openExpense, setOpen]  = useState(null);
   const [filterCat, setFilterCat] = useState("all");
+  const [activity, setActivity] = useState([]);
+  const [myId, setMyIdState] = useState(() => getMyId());
+  const [pullDist, setPullDist] = useState(0);
+  const [pulling, setPulling] = useState(false);
   const lastUpdatedRef = useRef(null);
+  const touchStartY = useRef(0);
+  const scrollTop = useRef(0);
 
   const loadTrip = useCallback(async (id, isInit = false) => {
     try {
@@ -895,6 +1376,7 @@ export default function App() {
       setTripName(data.name || "Trip Saya");
       setMembers(data.members || []);
       setExpenses(data.expenses || []);
+      setActivity(data.activity || []);
     } catch { } finally { if (isInit) setLoading(false); }
   }, []);
 
@@ -937,10 +1419,37 @@ export default function App() {
     }
   }, [tripId]);
 
-  const persist = async (m, e, name = tripName) => {
+  // Show onboarding on first ever app load
+  useEffect(() => {
+    if (!loading && !isOnboarded()) {
+      const timer = setTimeout(() => setModal("onboard"), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
+
+  // Prompt identity picker when there are members but no myId set
+  useEffect(() => {
+    if (!loading && members.length > 0 && !myId && !modal) {
+      // Only prompt once on initial load
+      const promptedKey = `sb-prompted-${tripId}`;
+      try {
+        if (!localStorage.getItem(promptedKey)) {
+          localStorage.setItem(promptedKey, "1");
+          setTimeout(() => setModal("identity"), 800);
+        }
+      } catch {}
+    }
+  }, [loading, members.length, myId, tripId]);
+
+  const persist = async (m, e, name = tripName, logEntry = null) => {
     setSaveState("saving");
+    let newActivity = activity;
+    if (logEntry) {
+      newActivity = [...activity, { ...logEntry, by: myId || "?", at: Date.now() }].slice(-200);
+      setActivity(newActivity);
+    }
     try {
-      await sb.saveTrip(tripId, { name, members: m, expenses: e });
+      await sb.saveTrip(tripId, { name, members: m, expenses: e, activity: newActivity });
       lastUpdatedRef.current = new Date().toISOString();
       setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800);
     } catch { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); }
@@ -988,10 +1497,13 @@ export default function App() {
 
   const addMember = () => {
     const name = newName.trim(); if (!name) return;
-    const next = [...members, { id: uid(), name, color: palette[members.length % palette.length], account: "" }];
-    setMembers(next); persist(next, expenses); setNewName("");
+    const newMember = { id: uid(), name, color: palette[members.length % palette.length], account: "", phone: "" };
+    const next = [...members, newMember];
+    setMembers(next); persist(next, expenses, undefined, { action: "menambahkan anggota", target: name });
+    setNewName("");
   };
   const removeMember = (id) => {
+    const removed = members.find((m) => m.id === id);
     const next = members.filter((m) => m.id !== id);
     const nextExp = expenses.map((e) => {
       if (e.paidBy === id) return null;
@@ -1010,21 +1522,30 @@ export default function App() {
       const shares = {}; remaining.forEach((k) => (shares[k] = per));
       return { ...e, shares };
     }).filter(Boolean);
-    setMembers(next); setExpenses(nextExp); persist(next, nextExp);
+    setMembers(next); setExpenses(nextExp);
+    persist(next, nextExp, undefined, removed ? { action: "menghapus anggota", target: removed.name } : null);
   };
   const setAccount = (id, account) => { const next = members.map((m) => m.id === id ? { ...m, account } : m); setMembers(next); persist(next, expenses); };
+  const setPhone = (id, phone) => { const next = members.map((m) => m.id === id ? { ...m, phone } : m); setMembers(next); persist(next, expenses); };
   const addExpense = async (exp, photoDataUrl) => {
     const next = [exp, ...expenses];
-    setExpenses(next); persist(members, next); setModal(null);
+    setExpenses(next); persist(members, next, undefined, { action: "menambah pengeluaran", target: exp.desc, amount: exp.amount }); setModal(null);
     if (photoDataUrl) { try { await sb.savePhoto(exp.id, photoDataUrl); } catch {} }
   };
   const updateExpense = (updated) => {
+    const prev = expenses.find((e) => e.id === updated.id);
     const next = expenses.map((e) => e.id === updated.id ? updated : e);
-    setExpenses(next); persist(members, next); setOpen(updated);
+    setExpenses(next);
+    const log = (prev && (prev.amount !== updated.amount || prev.desc !== updated.desc))
+      ? { action: "mengubah pengeluaran", target: updated.desc, amount: updated.amount }
+      : null;
+    persist(members, next, undefined, log); setOpen(updated);
   };
   const removeExpense = async (id) => {
+    const exp = expenses.find((e) => e.id === id);
     const next = expenses.filter((e) => e.id !== id);
-    setExpenses(next); persist(members, next);
+    setExpenses(next);
+    persist(members, next, undefined, exp ? { action: "menghapus pengeluaran", target: exp.desc, amount: exp.amount } : null);
     try { await sb.deletePhoto(id); } catch {}
   };
 
@@ -1037,19 +1558,41 @@ export default function App() {
 
   if (loading)
     return (
-      <div style={{ background: t.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <Loader2 size={26} style={{ color: t.muted, animation: "spin 1s linear infinite" }} />
+      <div style={{ background: t.bg, minHeight: "100vh", maxWidth: 560, margin: "0 auto", fontFamily: "'Inter', sans-serif" }}>
+        <style>{`@keyframes shimmer { from { background-position: 200% 0 } to { background-position: -200% 0 } }`}</style>
+        <AppSkeleton t={t} />
       </div>
     );
 
   return (
-    <div style={{ fontFamily: "'Inter', 'Plus Jakarta Sans', system-ui, sans-serif", background: t.bg, minHeight: "100vh", color: t.text, paddingBottom: 60, maxWidth: 560, margin: "0 auto" }}>
+    <div
+      onTouchStart={(e) => { scrollTop.current = window.scrollY; touchStartY.current = e.touches[0].clientY; }}
+      onTouchMove={(e) => {
+        if (scrollTop.current > 0 || pulling) return;
+        const dy = e.touches[0].clientY - touchStartY.current;
+        if (dy > 0 && dy < 120) { setPullDist(dy); }
+        else if (dy >= 120 && !pulling) {
+          setPulling(true); setPullDist(120);
+          loadTrip(tripId, false).finally(() => { setTimeout(() => { setPulling(false); setPullDist(0); }, 600); });
+        }
+      }}
+      onTouchEnd={() => { if (!pulling) setPullDist(0); }}
+      style={{ fontFamily: "'Inter', 'Plus Jakarta Sans', system-ui, sans-serif", background: t.bg, minHeight: "100vh", color: t.text, paddingBottom: 60, maxWidth: 560, margin: "0 auto", position: "relative" }}>
+      {pullDist > 0 && (
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: pullDist, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 8, color: t.muted, fontSize: 12, transition: pulling ? "none" : "height .2s" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            {pulling ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : pullDist >= 80 ? "↓ Lepas untuk refresh" : "↓ Tarik untuk refresh"}
+          </span>
+        </div>
+      )}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         @keyframes slideUp { from { opacity:0; transform: translateY(20px) } to { opacity:1; transform:none } }
         @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
         @keyframes spin { to { transform: rotate(360deg) } }
+        @keyframes shimmer { from { background-position: 200% 0 } to { background-position: -200% 0 } }
+        @keyframes scaleIn { from { opacity: 0; transform: scale(0.96) } to { opacity: 1; transform: scale(1) } }
         .fadein { animation: fadeIn .2s ease both; }
         input:focus, select:focus, button:focus-visible { outline: 2px solid ${t.accent}66; outline-offset: 0; }
         button { cursor: pointer; font-family: inherit; }
@@ -1063,15 +1606,26 @@ export default function App() {
 
       {/* ─── HEADER ─── */}
       <header style={{ padding: "20px 20px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <button onClick={() => setModal("trips")} style={{ ...btnGhost(t), padding: "6px 10px" }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{tripName.length > 22 ? tripName.slice(0,20)+"…" : tripName}</span>
-          <ChevronDown size={13} style={{ color: t.muted }} />
-        </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}>
+          <button onClick={() => setModal("trips")} style={{ ...btnGhost(t), padding: "6px 10px", minWidth: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 160 }}>{tripName}</span>
+            <ChevronDown size={13} style={{ color: t.muted, flexShrink: 0 }} />
+          </button>
+          {members.length > 0 && (
+            <button onClick={() => setModal("identity")} style={{ background: "none", border: "none", padding: 4, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }} title={myId ? `Kamu: ${members.find(m=>m.id===myId)?.name}` : "Pilih identitas"}>
+              {myId && members.find(m => m.id === myId)
+                ? <Avatar name={members.find(m=>m.id===myId).name} color={members.find(m=>m.id===myId).color} size={22} />
+                : <span style={{ width: 22, height: 22, borderRadius: 22, border: `1.5px dashed ${t.muted}`, display: "inline-flex", alignItems: "center", justifyContent: "center", color: t.muted, fontSize: 11 }}>?</span>}
+            </button>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           {saveState === "saving" && <span style={{ fontSize: 11.5, color: t.muted, display: "flex", alignItems: "center", gap: 4 }}><Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} /></span>}
           {saveState === "saved"  && <span className="fadein" style={{ fontSize: 11.5, color: t.success, fontWeight: 500 }}>✓</span>}
           {saveState === "error"  && <span style={{ fontSize: 11.5, color: t.danger }}>⚠</span>}
-          <button onClick={() => setModal("export")} style={btnX(t)} title="Bagikan ringkasan"><Share2 size={16} /></button>
+          <button onClick={() => setModal("stats")} style={btnX(t)} title="Statistik"><BarChart3 size={16} /></button>
+          <button onClick={() => setModal("activity")} style={btnX(t)} title="Riwayat"><History size={16} /></button>
+          <button onClick={() => setModal("export")} style={btnX(t)} title="Bagikan"><Share2 size={16} /></button>
           <button onClick={toggleDark} style={btnX(t)} title="Tema">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
         </div>
       </header>
@@ -1127,10 +1681,15 @@ export default function App() {
                 <button onClick={() => removeMember(m.id)} style={{ ...btnX(t), width: 30, height: 30, color: t.muted }}><X size={14} /></button>
               </div>
               {editAcct === m.id && (
-                <div style={{ padding: "0 12px 10px" }}>
-                  <input autoFocus defaultValue={m.account} placeholder="BCA 1234567890 a.n. Nama / GoPay 0812…"
-                    onBlur={(e) => { setAccount(m.id, e.target.value.trim()); setEditAcct(null); }}
+                <div style={{ padding: "0 12px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <input autoFocus defaultValue={m.account} placeholder="Rekening: BCA 1234567890 a.n. Nama"
+                    onBlur={(e) => setAccount(m.id, e.target.value.trim())}
                     onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                    style={{ ...inputSt(t), fontSize: 13, padding: "8px 10px" }} />
+                  <input defaultValue={m.phone || ""} placeholder="No WA: 0812xxxxxx (untuk tagih otomatis)"
+                    onBlur={(e) => { setPhone(m.id, e.target.value.trim()); setEditAcct(null); }}
+                    onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                    inputMode="tel"
                     style={{ ...inputSt(t), fontSize: 13, padding: "8px 10px" }} />
                 </div>
               )}
@@ -1227,39 +1786,68 @@ export default function App() {
             ? <div style={{ ...emptyStyle(t), color: t.success }}>Semua sudah lunas ✓</div>
             : (
               <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
-                {tx.map((tt, i) => (
-                  <div key={i} style={{ padding: "13px 14px", borderTop: i > 0 ? `1px solid ${t.divider}` : "none" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <Avatar name={tt.from.name} color={tt.from.color} size={22} />
-                        <span style={{ fontWeight: 600, fontSize: 14, color: t.text }}>{tt.from.name}</span>
-                      </span>
-                      <ArrowRight size={13} style={{ color: t.muted }} />
-                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <Avatar name={tt.to.name} color={tt.to.color} size={22} />
-                        <span style={{ fontWeight: 600, fontSize: 14, color: t.text }}>{tt.to.name}</span>
-                      </span>
-                      <span style={{ fontWeight: 600, fontSize: 14.5, marginLeft: "auto", color: t.text, ...num }}>{rp(tt.amount)}</span>
+                {tx.map((tt, i) => {
+                  const phone = formatWANumber(tt.from.phone);
+                  const msg = buildWAPersonal(tripName, tt.from.name, tt.to.name, tt.amount, tt.to.account);
+                  const waUrl = phone
+                    ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
+                    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+                  return (
+                    <div key={i} style={{ padding: "13px 14px", borderTop: i > 0 ? `1px solid ${t.divider}` : "none" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <Avatar name={tt.from.name} color={tt.from.color} size={22} />
+                          <span style={{ fontWeight: 600, fontSize: 14, color: t.text }}>{tt.from.name}</span>
+                        </span>
+                        <ArrowRight size={13} style={{ color: t.muted }} />
+                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <Avatar name={tt.to.name} color={tt.to.color} size={22} />
+                          <span style={{ fontWeight: 600, fontSize: 14, color: t.text }}>{tt.to.name}</span>
+                        </span>
+                        <span style={{ fontWeight: 600, fontSize: 14.5, marginLeft: "auto", color: t.text, ...num }}>{rp(tt.amount)}</span>
+                      </div>
+                      {tt.to.account && <div style={{ fontSize: 12, color: t.muted, marginTop: 6, paddingLeft: 30 }}>{tt.to.account}</div>}
+                      {!tt.to.account && <div style={{ fontSize: 12, color: t.muted, marginTop: 6, paddingLeft: 30, fontStyle: "italic" }}>tambah rekening {tt.to.name}</div>}
+                      <a href={waUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, marginLeft: 30, padding: "5px 11px", background: "#25d366", color: "#fff", borderRadius: 7, fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
+                        <Phone size={11} /> {phone ? `Tagih ${tt.from.name}` : "Tagih via WA"}
+                      </a>
                     </div>
-                    {tt.to.account && <div style={{ fontSize: 12, color: t.muted, marginTop: 6, paddingLeft: 30 }}>{tt.to.account}</div>}
-                    {!tt.to.account && <div style={{ fontSize: 12, color: t.muted, marginTop: 6, paddingLeft: 30, fontStyle: "italic" }}>tambah rekening {tt.to.name}</div>}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )
           }
           {tx.length > 0 && (
-            <button onClick={() => setModal("export")} style={{ ...btnPrimary(t), width: "100%", marginTop: 16 }}>
-              <Share2 size={14} /> Bagikan ke grup
-            </button>
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button onClick={() => setModal("export")} style={btnSecondary(t)}>
+                <Share2 size={14} /> Bagikan
+              </button>
+              <button onClick={() => {
+                // Open WA tabs sequentially for each transfer
+                tx.forEach((tt, idx) => {
+                  setTimeout(() => {
+                    const phone = formatWANumber(tt.from.phone);
+                    const msg = buildWAPersonal(tripName, tt.from.name, tt.to.name, tt.amount, tt.to.account);
+                    const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+                    window.open(url, "_blank");
+                  }, idx * 200);
+                });
+              }} style={btnPrimary(t)}>
+                <Phone size={14} /> Tagih semua
+              </button>
+            </div>
           )}
         </section>
       )}
 
-      {modal === "scan"   && <ScanModal   members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
-      {modal === "manual" && <ManualModal members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
-      {modal === "export" && <ExportModal tripId={tripId} tripName={tripName} members={members} expenses={expenses} balances={balances} tx={tx} onClose={() => setModal(null)} t={t} />}
-      {modal === "trips"  && <TripSelector currentId={tripId} trips={allTrips} onSelect={switchTrip} onCreate={createTrip} onDelete={deleteTrip} onClose={() => setModal(null)} t={t} />}
+      {modal === "scan"     && <ScanModal     members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
+      {modal === "manual"   && <ManualModal   members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
+      {modal === "export"   && <ExportModal   tripId={tripId} tripName={tripName} members={members} expenses={expenses} balances={balances} tx={tx} onClose={() => setModal(null)} t={t} />}
+      {modal === "trips"    && <TripSelector  currentId={tripId} trips={allTrips} onSelect={switchTrip} onCreate={createTrip} onDelete={deleteTrip} onClose={() => setModal(null)} t={t} />}
+      {modal === "stats"    && <StatsModal    tripName={tripName} members={members} expenses={expenses} onClose={() => setModal(null)} t={t} />}
+      {modal === "activity" && <ActivityModal activity={activity} members={members} onClose={() => setModal(null)} t={t} />}
+      {modal === "identity" && <IdentityPicker members={members} currentId={myId} onSelect={(id) => { setMyId(id); setMyIdState(id); setModal(null); }} onSkip={() => setModal(null)} t={t} />}
+      {modal === "onboard"  && <OnboardingModal onClose={() => { setOnboarded(); setModal(null); }} t={t} />}
       {openExpense && <DetailModal expense={openExpense} members={members} onClose={() => setOpen(null)} onUpdate={updateExpense} onDelete={(id) => { removeExpense(id); setOpen(null); }} t={t} />}
     </div>
   );
