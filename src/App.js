@@ -802,9 +802,31 @@ export default function App() {
   const removeMember = (id) => {
     const next = members.filter((m) => m.id !== id);
     const nextExp = expenses.map((e) => {
+      // If payer is removed, the whole expense is invalid
       if (e.paidBy === id) return null;
-      const shares = { ...(e.shares || {}) }; delete shares[id];
-      return Object.keys(shares).length ? { ...e, shares } : null;
+
+      // If removed person had no share, expense stays as-is
+      if (!e.shares || e.shares[id] == null) return e;
+
+      // SCANNED expense: remove from items' who arrays + recompute properly
+      if (e.items && e.items.length > 0) {
+        const newItems = e.items.map((it) => ({ ...it, who: (it.who || []).filter((x) => x !== id) }));
+        // If no items have anyone left, drop the expense
+        if (!newItems.some((it) => it.who.length > 0)) return null;
+        const charges = e.charges || { tax: 0, service: 0, discount: 0 };
+        const { shares, amount } = computeReceiptShares(newItems, charges, next);
+        if (!Object.keys(shares).length) return null;
+        return { ...e, items: newItems, shares, amount };
+      }
+
+      // MANUAL expense: redistribute removed person's share equally among remaining
+      // Keep total amount (payer still paid full amount)
+      const remaining = Object.keys(e.shares).filter((x) => x !== id);
+      if (!remaining.length) return null;
+      const per = e.amount / remaining.length;
+      const shares = {};
+      remaining.forEach((k) => (shares[k] = per));
+      return { ...e, shares };
     }).filter(Boolean);
     setMembers(next); setExpenses(nextExp); persist(next, nextExp);
   };
