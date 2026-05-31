@@ -3,6 +3,7 @@ import {
   Plus, Trash2, Receipt, Scale, X, ArrowRight, Check, Camera,
   Sparkles, Loader2, CreditCard, ChevronRight, Share2, Pencil, Moon, Sun,
   UtensilsCrossed, Car, BedDouble, ShoppingBag, Music, MoreHorizontal, ChevronDown,
+  Download, Link2,
 } from "lucide-react";
 
 // ── Supabase ──────────────────────────────────────────────────────────
@@ -151,6 +152,75 @@ function settle(members, expenses) {
   return { balances, tx };
 }
 
+function buildCSV(tripName, members, expenses, balances, tx) {
+  const nameOf = (id) => members.find((m) => m.id === id)?.name || "?";
+  const esc = (v) => {
+    const s = String(v ?? "");
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [];
+
+  // Header
+  lines.push(`"${tripName} — Ringkasan"`);
+  lines.push(`"Dibuat","${new Date().toLocaleString("id-ID")}"`);
+  lines.push("");
+
+  // Section 1: Expenses
+  lines.push("PENGELUARAN");
+  const memberHeaders = members.map((m) => esc(m.name)).join(",");
+  lines.push(`"Tanggal","Deskripsi","Kategori","Dibayar oleh","Jumlah",${memberHeaders}`);
+  expenses.forEach((e) => {
+    const date = new Date(e.at || Date.now()).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const cat = (CATEGORIES.find((c) => c.id === (e.category || "lainnya")) || CATEGORIES[5]).label;
+    const memberShares = members.map((m) => Math.round((e.shares || {})[m.id] || 0));
+    lines.push([date, e.desc, cat, nameOf(e.paidBy), Math.round(e.amount), ...memberShares].map(esc).join(","));
+  });
+  // Totals row
+  const memberTotals = members.map((m) => expenses.reduce((s, e) => s + Math.round((e.shares || {})[m.id] || 0), 0));
+  const grandTotal = expenses.reduce((s, e) => s + Math.round(e.amount), 0);
+  lines.push(["", "TOTAL", "", "", grandTotal, ...memberTotals].map(esc).join(","));
+  lines.push("");
+
+  // Section 2: Items per expense (only scanned ones)
+  const withItems = expenses.filter((e) => e.items?.length);
+  if (withItems.length) {
+    lines.push("RINCIAN ITEM");
+    lines.push(`"Pengeluaran","Item","Harga","Dibagi ke"`);
+    withItems.forEach((e) => {
+      e.items.forEach((it) => {
+        const who = (it.who || []).map((id) => nameOf(id)).join(" + ");
+        lines.push([e.desc, it.name, Math.round(it.price), who].map(esc).join(","));
+      });
+      if (e.charges?.tax)      lines.push([e.desc, "Pajak",   Math.round(e.charges.tax), ""].map(esc).join(","));
+      if (e.charges?.service)  lines.push([e.desc, "Service", Math.round(e.charges.service), ""].map(esc).join(","));
+      if (e.charges?.discount) lines.push([e.desc, "Diskon", -Math.round(e.charges.discount), ""].map(esc).join(","));
+    });
+    lines.push("");
+  }
+
+  // Section 3: Balances
+  lines.push("POSISI SALDO");
+  lines.push(`"Nama","Saldo","Status"`);
+  balances.forEach((b) => {
+    const status = b.amount > 0 ? "Piutang (terima)" : b.amount < 0 ? "Hutang (bayar)" : "Lunas";
+    lines.push([b.name, b.amount, status].map(esc).join(","));
+  });
+  lines.push("");
+
+  // Section 4: Transfers
+  lines.push("INSTRUKSI TRANSFER");
+  lines.push(`"Dari","Ke","Jumlah","Rekening"`);
+  if (tx.length === 0) {
+    lines.push(`"-","-",0,"Semua sudah lunas"`);
+  } else {
+    tx.forEach((t) => {
+      lines.push([t.from.name, t.to.name, t.amount, t.to.account || ""].map(esc).join(","));
+    });
+  }
+
+  return lines.join("\n");
+}
+
 function buildWAText(tripName, members, expenses, tx) {
   const nameOf = (id) => members.find((m) => m.id === id)?.name || "?";
   const total = expenses.reduce((s, e) => s + e.amount, 0);
@@ -254,24 +324,87 @@ function CatChips({ value, onChange, t }) {
 }
 
 // ── Export Modal ──────────────────────────────────────────────────────
-function ExportModal({ tripName, members, expenses, tx, onClose, t }) {
-  const text = useMemo(() => buildWAText(tripName, members, expenses, tx), [tripName, members, expenses, tx]);
+function ExportModal({ tripId, tripName, members, expenses, balances, tx, onClose, t }) {
+  const [mode, setMode] = useState("wa"); // wa | csv | link
+  const waText  = useMemo(() => buildWAText(tripName, members, expenses, tx), [tripName, members, expenses, tx]);
+  const csvText = useMemo(() => buildCSV(tripName, members, expenses, balances, tx), [tripName, members, expenses, balances, tx]);
+  const shareUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const base = window.location.origin + window.location.pathname;
+    return `${base}#${tripId}`;
+  }, [tripId]);
+
   const [copied, setCopied] = useState(false);
-  const copy = () => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
-  const share = () => { if (navigator.share) navigator.share({ text }); else copy(); };
+  const text = mode === "csv" ? csvText : waText;
+
+  const copy = () => {
+    const payload = mode === "link" ? shareUrl : text;
+    navigator.clipboard.writeText(payload).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
+  const share = () => {
+    if (mode === "link") {
+      if (navigator.share) navigator.share({ title: tripName, url: shareUrl });
+      else copy();
+    } else {
+      if (navigator.share) navigator.share({ text });
+      else copy();
+    }
+  };
+  const downloadCSV = () => {
+    const blob = new Blob([`\uFEFF${csvText}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safeName = tripName.replace(/[^\w\s-]/g, "").replace(/\s+/g, "_");
+    a.href = url; a.download = `${safeName}_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const tabStyle = (active) => ({
+    flex: 1, padding: "9px 8px", border: "none", background: active ? t.surface : "transparent",
+    color: active ? t.text : t.muted, fontWeight: 600, fontSize: 13, borderRadius: 8, cursor: "pointer",
+    fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+  });
+
   return (
     <div style={ov} onClick={onClose}>
       <div style={{ ...modalSt(t), maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <h3 style={mTitle(t)}>Ringkasan</h3>
+          <h3 style={mTitle(t)}>Bagikan</h3>
           <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
         </div>
-        <div style={{ flex: 1, overflowY: "auto", background: t.subtle, border: `1px solid ${t.border}`, borderRadius: 10, padding: 14, fontSize: 13, lineHeight: 1.65, whiteSpace: "pre-wrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: t.text, marginBottom: 14, maxHeight: "55vh", ...num }}>
-          {text}
+
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 2, padding: 3, background: t.subtle, border: `1px solid ${t.border}`, borderRadius: 10, marginBottom: 12 }}>
+          <button onClick={() => { setMode("wa"); setCopied(false); }} style={tabStyle(mode==="wa")}><Share2 size={13} /> WA</button>
+          <button onClick={() => { setMode("csv"); setCopied(false); }} style={tabStyle(mode==="csv")}><Download size={13} /> CSV</button>
+          <button onClick={() => { setMode("link"); setCopied(false); }} style={tabStyle(mode==="link")}><Link2 size={13} /> Link</button>
         </div>
+
+        {/* Content */}
+        {mode === "link" ? (
+          <div style={{ flex: 1, marginBottom: 14 }}>
+            <p style={{ fontSize: 13.5, color: t.textSoft, margin: "0 0 12px", lineHeight: 1.5 }}>
+              Teman yang buka link ini akan masuk ke trip yang sama dan bisa input bareng-bareng.
+            </p>
+            <div style={{ padding: 14, background: t.subtle, border: `1px solid ${t.border}`, borderRadius: 10, fontFamily: "ui-monospace, monospace", fontSize: 13, wordBreak: "break-all", color: t.text, marginBottom: 10 }}>
+              {shareUrl}
+            </div>
+            <div style={{ padding: "10px 12px", background: t.accentSoft, border: `1px solid ${t.accent}22`, borderRadius: 8, fontSize: 12.5, color: t.textSoft, lineHeight: 1.5 }}>
+              Catatan: siapa pun yang punya link ini bisa lihat dan edit trip. Hanya share ke teman trip.
+            </div>
+          </div>
+        ) : (
+          <div style={{ flex: 1, overflowY: "auto", background: t.subtle, border: `1px solid ${t.border}`, borderRadius: 10, padding: 14, fontSize: mode==="csv" ? 11.5 : 13, lineHeight: 1.6, whiteSpace: "pre-wrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: t.text, marginBottom: 14, maxHeight: "50vh", ...num }}>
+            {text}
+          </div>
+        )}
+
+        {/* Actions */}
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={copy} style={btnSecondary(t)}>{copied ? "Tersalin" : "Salin"}</button>
-          <button onClick={share} style={btnPrimary(t)}><Share2 size={15} /> Bagikan</button>
+          <button onClick={copy} style={btnSecondary(t)}>{copied ? "Tersalin ✓" : "Salin"}</button>
+          {mode === "csv" && <button onClick={downloadCSV} style={btnPrimary(t)}><Download size={15} /> Download .csv</button>}
+          {mode !== "csv" && <button onClick={share} style={btnPrimary(t)}><Share2 size={15} /> Bagikan</button>}
         </div>
       </div>
     </div>
@@ -698,7 +831,19 @@ export default function App() {
   const [dark, toggleDark] = useDark();
   const t = dark ? T.dark : T.light;
 
-  const [tripId, setTripId]     = useState(() => { try { return localStorage.getItem("sb-tripid") || "default-trip"; } catch { return "default-trip"; } });
+  const [tripId, setTripId]     = useState(() => {
+    // Priority: URL hash > localStorage > unique fallback (per-device)
+    try {
+      const hash = window.location.hash.replace(/^#\/?(trip\/)?/, "");
+      if (hash) return hash;
+      const stored = localStorage.getItem("sb-tripid");
+      if (stored) return stored;
+      // Generate unique per-device default trip
+      const unique = "trip-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      localStorage.setItem("sb-tripid", unique);
+      return unique;
+    } catch { return "default-trip"; }
+  });
   const [tripName, setTripName] = useState("Trip Saya");
   const [allTrips, setAllTrips] = useState([]);
   const [members, setMembers]   = useState([]);
@@ -735,6 +880,26 @@ export default function App() {
 
   useEffect(() => { sb.getTrips().then((rows) => setAllTrips(rows || [])).catch(() => {}); }, [tripId]);
 
+  // Listen for URL hash changes (e.g. someone opens a shared link in same tab)
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash.replace(/^#\/?(trip\/)?/, "");
+      if (hash && hash !== tripId) {
+        try { localStorage.setItem("sb-tripid", hash); } catch {}
+        setTripId(hash);
+      }
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [tripId]);
+
+  // Set hash on initial load if not present
+  useEffect(() => {
+    if (!window.location.hash) {
+      try { window.location.hash = tripId; } catch {}
+    }
+  }, [tripId]);
+
   const persist = async (m, e, name = tripName) => {
     setSaveState("saving");
     try {
@@ -744,7 +909,13 @@ export default function App() {
     } catch { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); }
   };
 
-  const switchTrip = (id) => { try { localStorage.setItem("sb-tripid", id); } catch {} setTripId(id); setModal(null); setFilterCat("all"); };
+  const switchTrip = (id) => {
+    try {
+      localStorage.setItem("sb-tripid", id);
+      window.location.hash = id;
+    } catch {}
+    setTripId(id); setModal(null); setFilterCat("all");
+  };
   const createTrip = async (name) => { const id = "trip-" + Date.now().toString(36); await sb.saveTrip(id, { name, members: [], expenses: [] }); switchTrip(id); };
   const deleteTrip = async (id) => {
     try { await sb.deleteTrip(id); } catch {}
@@ -1036,7 +1207,7 @@ export default function App() {
 
       {modal === "scan"   && <ScanModal   members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
       {modal === "manual" && <ManualModal members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
-      {modal === "export" && <ExportModal tripName={tripName} members={members} expenses={expenses} tx={tx} onClose={() => setModal(null)} t={t} />}
+      {modal === "export" && <ExportModal tripId={tripId} tripName={tripName} members={members} expenses={expenses} balances={balances} tx={tx} onClose={() => setModal(null)} t={t} />}
       {modal === "trips"  && <TripSelector currentId={tripId} trips={allTrips} onSelect={switchTrip} onCreate={createTrip} onDelete={deleteTrip} onClose={() => setModal(null)} t={t} />}
       {openExpense && <DetailModal expense={openExpense} members={members} onClose={() => setOpen(null)} onUpdate={updateExpense} onDelete={(id) => { removeExpense(id); setOpen(null); }} t={t} />}
     </div>
