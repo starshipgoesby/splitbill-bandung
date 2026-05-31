@@ -40,6 +40,34 @@ const sb = {
   async savePhoto(id, photo) { await sbFetch("receipt_photos", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" }, body: JSON.stringify({ id, photo }) }); },
   async deletePhoto(id) { await sbFetch(`receipt_photos?id=eq.${id}`, { method: "DELETE" }); },
   async deleteTrip(id) { await sbFetch(`trip_data?id=eq.${id}`, { method: "DELETE" }); },
+  async getTripsByIds(ids) {
+    if (!ids?.length) return [];
+    const inList = ids.map((x) => encodeURIComponent(x)).join(",");
+    const r = await sbFetch(`trip_data?id=in.(${inList})&select=id,data,updated_at&order=updated_at.desc`);
+    return await r.json();
+  },
+};
+
+// Per-device list of trip IDs that this user has visited / created
+const myTripIdsKey = "sb-my-trips";
+const getMyTripIds = () => {
+  try { return JSON.parse(localStorage.getItem(myTripIdsKey) || "[]"); } catch { return []; }
+};
+const addMyTripId = (id) => {
+  if (!id) return;
+  try {
+    const cur = getMyTripIds();
+    if (!cur.includes(id)) {
+      cur.unshift(id);
+      localStorage.setItem(myTripIdsKey, JSON.stringify(cur.slice(0, 50)));
+    }
+  } catch {}
+};
+const removeMyTripId = (id) => {
+  try {
+    const cur = getMyTripIds().filter((x) => x !== id);
+    localStorage.setItem(myTripIdsKey, JSON.stringify(cur));
+  } catch {}
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -832,15 +860,14 @@ export default function App() {
   const t = dark ? T.dark : T.light;
 
   const [tripId, setTripId]     = useState(() => {
-    // Priority: URL hash > localStorage > unique fallback (per-device)
     try {
       const hash = window.location.hash.replace(/^#\/?(trip\/)?/, "");
-      if (hash) return hash;
+      if (hash) { addMyTripId(hash); return hash; }
       const stored = localStorage.getItem("sb-tripid");
-      if (stored) return stored;
-      // Generate unique per-device default trip
+      if (stored) { addMyTripId(stored); return stored; }
       const unique = "trip-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       localStorage.setItem("sb-tripid", unique);
+      addMyTripId(unique);
       return unique;
     } catch { return "default-trip"; }
   });
@@ -878,7 +905,16 @@ export default function App() {
     return () => clearInterval(interval);
   }, [tripId, loadTrip]);
 
-  useEffect(() => { sb.getTrips().then((rows) => setAllTrips(rows || [])).catch(() => {}); }, [tripId]);
+  useEffect(() => {
+    const ids = getMyTripIds();
+    sb.getTripsByIds(ids).then((rows) => {
+      // Preserve local order (most recently added first)
+      const map = new Map((rows || []).map((r) => [r.id, r]));
+      const ordered = ids.map((id) => map.get(id)).filter(Boolean);
+      // Also include any trips from DB that aren't yet in local but exist (defensive)
+      setAllTrips(ordered);
+    }).catch(() => {});
+  }, [tripId]);
 
   // Listen for URL hash changes (e.g. someone opens a shared link in same tab)
   useEffect(() => {
@@ -886,6 +922,7 @@ export default function App() {
       const hash = window.location.hash.replace(/^#\/?(trip\/)?/, "");
       if (hash && hash !== tripId) {
         try { localStorage.setItem("sb-tripid", hash); } catch {}
+        addMyTripId(hash);
         setTripId(hash);
       }
     };
@@ -914,20 +951,34 @@ export default function App() {
       localStorage.setItem("sb-tripid", id);
       window.location.hash = id;
     } catch {}
+    addMyTripId(id);
     setTripId(id); setModal(null); setFilterCat("all");
   };
-  const createTrip = async (name) => { const id = "trip-" + Date.now().toString(36); await sb.saveTrip(id, { name, members: [], expenses: [] }); switchTrip(id); };
+  const createTrip = async (name) => {
+    const id = "trip-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 4);
+    await sb.saveTrip(id, { name, members: [], expenses: [] });
+    addMyTripId(id);
+    switchTrip(id);
+  };
   const deleteTrip = async (id) => {
-    try { await sb.deleteTrip(id); } catch {}
+    // Always remove from local list first (this hides it from the dropdown even if server delete fails)
+    removeMyTripId(id);
+    // Try server delete (may fail silently if RLS prevents)
     try {
       const row = await sb.getTrip(id);
       const exps = row?.data?.expenses || [];
       await Promise.all(exps.filter((e) => e.hasReceipt).map((e) => sb.deletePhoto(e.id)));
     } catch {}
-    const rows = await sb.getTrips();
-    setAllTrips(rows || []);
+    try { await sb.deleteTrip(id); } catch {}
+    // Refresh local list view
+    const ids = getMyTripIds();
+    const rows = await sb.getTripsByIds(ids);
+    const map = new Map((rows || []).map((r) => [r.id, r]));
+    const ordered = ids.map((x) => map.get(x)).filter(Boolean);
+    setAllTrips(ordered);
+    // If deleted current, switch to another or create new
     if (id === tripId) {
-      const next = (rows || []).find((r) => r.id !== id);
+      const next = ordered[0];
       if (next) switchTrip(next.id);
       else await createTrip("Trip Saya");
     }
