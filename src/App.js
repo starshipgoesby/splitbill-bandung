@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
-  Plus, Trash2, Receipt, Scale, X, ArrowRight, Check, Camera,
+  Plus, Trash2, Users, Receipt, Scale, X, ArrowRight, Check, Camera,
   Sparkles, Loader2, CreditCard, ChevronRight, Share2, Pencil, Moon, Sun,
   UtensilsCrossed, Car, BedDouble, ShoppingBag, Music, MoreHorizontal, ChevronDown,
   Download, Link2, Phone, History, BarChart3, Trophy, Target,
