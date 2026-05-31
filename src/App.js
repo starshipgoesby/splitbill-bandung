@@ -32,58 +32,30 @@ async function sbFetch(path, opts = {}, retries = 0) {
 }
 
 const sb = {
-  async getTrips() {
-    const r = await sbFetch("trip_data?select=id,data,updated_at&order=updated_at.desc");
-    return await r.json();
-  },
-  async getTrip(id) {
-    const r = await sbFetch(`trip_data?id=eq.${id}&select=data,updated_at`);
-    const rows = await r.json();
-    return rows?.[0] ?? null;
-  },
-  async saveTrip(id, data) {
-    await sbFetch("trip_data", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify({ id, data, updated_at: new Date().toISOString() }),
-    });
-  },
-  async getPhoto(id) {
-    const r = await sbFetch(`receipt_photos?id=eq.${id}&select=photo`);
-    const rows = await r.json();
-    return rows?.[0]?.photo ?? null;
-  },
-  async savePhoto(id, photo) {
-    await sbFetch("receipt_photos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify({ id, photo }),
-    });
-  },
-  async deletePhoto(id) {
-    await sbFetch(`receipt_photos?id=eq.${id}`, { method: "DELETE" });
-  },
-  async deleteTrip(id) {
-    await sbFetch(`trip_data?id=eq.${id}`, { method: "DELETE" });
-  },
+  async getTrips() { const r = await sbFetch("trip_data?select=id,data,updated_at&order=updated_at.desc"); return await r.json(); },
+  async getTrip(id) { const r = await sbFetch(`trip_data?id=eq.${id}&select=data,updated_at`); const rows = await r.json(); return rows?.[0] ?? null; },
+  async saveTrip(id, data) { await sbFetch("trip_data", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" }, body: JSON.stringify({ id, data, updated_at: new Date().toISOString() }) }); },
+  async getPhoto(id) { const r = await sbFetch(`receipt_photos?id=eq.${id}&select=photo`); const rows = await r.json(); return rows?.[0]?.photo ?? null; },
+  async savePhoto(id, photo) { await sbFetch("receipt_photos", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" }, body: JSON.stringify({ id, photo }) }); },
+  async deletePhoto(id) { await sbFetch(`receipt_photos?id=eq.${id}`, { method: "DELETE" }); },
+  async deleteTrip(id) { await sbFetch(`trip_data?id=eq.${id}`, { method: "DELETE" }); },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────
 const rp = (n) => "Rp " + Math.round(n || 0).toLocaleString("id-ID");
-const palette = ["#c75b39","#2d6a4f","#bc6c25","#3a6ea5","#9d4edd","#d62828","#0a9396","#7f5539"];
+const palette = ["#ea580c","#16a34a","#ca8a04","#2563eb","#9333ea","#db2777","#0d9488","#a16207"];
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 const CATEGORIES = [
-  { id: "makan",      label: "Makan",      icon: UtensilsCrossed, color: "#c75b39" },
-  { id: "transport",  label: "Transport",  icon: Car,             color: "#3a6ea5" },
-  { id: "penginapan", label: "Penginapan", icon: BedDouble,       color: "#2d6a4f" },
-  { id: "belanja",    label: "Belanja",    icon: ShoppingBag,     color: "#bc6c25" },
-  { id: "hiburan",    label: "Hiburan",    icon: Music,           color: "#9d4edd" },
-  { id: "lainnya",    label: "Lainnya",    icon: MoreHorizontal,  color: "#888"    },
+  { id: "makan",      label: "Makan",      icon: UtensilsCrossed, color: "#ea580c" },
+  { id: "transport",  label: "Transport",  icon: Car,             color: "#2563eb" },
+  { id: "penginapan", label: "Penginapan", icon: BedDouble,       color: "#16a34a" },
+  { id: "belanja",    label: "Belanja",    icon: ShoppingBag,     color: "#ca8a04" },
+  { id: "hiburan",    label: "Hiburan",    icon: Music,           color: "#9333ea" },
+  { id: "lainnya",    label: "Lainnya",    icon: MoreHorizontal,  color: "#71717a" },
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[5];
 
-// Read file as data URL (no compression)
 function readAsDataURL(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -93,21 +65,17 @@ function readAsDataURL(file) {
   });
 }
 
-// Prepare image for AI scan — keep HIGH QUALITY for accurate text recognition.
-// Only resize/compress if needed to fit AI API limits (~5MB).
 function prepareForAI(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        // Start with original dimensions, high quality
-        const MAX_BYTES = 4_500_000; // base64 ~5MB cap for AI API
+        const MAX_BYTES = 4_500_000;
         let maxDim = Math.max(img.width, img.height);
         let quality = 0.92;
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
-
         const render = (dim, q) => {
           const scale = Math.min(1, dim / Math.max(img.width, img.height));
           canvas.width = Math.round(img.width * scale);
@@ -115,9 +83,7 @@ function prepareForAI(file) {
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           return canvas.toDataURL("image/jpeg", q);
         };
-
         let dataUrl = render(maxDim, quality);
-        // Only shrink if exceeding API limit
         while (dataUrl.length > MAX_BYTES) {
           if (quality > 0.7) quality -= 0.05;
           else if (maxDim > 1400) maxDim -= 200;
@@ -188,8 +154,7 @@ function settle(members, expenses) {
 function buildWAText(tripName, members, expenses, tx) {
   const nameOf = (id) => members.find((m) => m.id === id)?.name || "?";
   const total = expenses.reduce((s, e) => s + e.amount, 0);
-  const lines = [`🏔️ *${tripName} — Ringkasan Patungan*`, ""];
-  lines.push(`💰 Total: *${rp(total)}*`, "");
+  const lines = [`*${tripName}*`, "", `Total: *${rp(total)}*`, ""];
   const byCat = {};
   expenses.forEach((e) => {
     const c = catOf(e.category);
@@ -198,65 +163,92 @@ function buildWAText(tripName, members, expenses, tx) {
     byCat[c.id].total += e.amount;
   });
   Object.values(byCat).forEach((cat) => {
-    lines.push(`*${cat.label}* (${rp(cat.total)})`);
-    cat.items.forEach((e) => lines.push(`  • ${e.desc} — ${rp(e.amount)} _(${nameOf(e.paidBy)})_`));
+    lines.push(`*${cat.label}* — ${rp(cat.total)}`);
+    cat.items.forEach((e) => lines.push(`  • ${e.desc} · ${rp(e.amount)} (${nameOf(e.paidBy)})`));
     lines.push("");
   });
   if (tx.length === 0) {
-    lines.push("✅ Semua sudah lunas!");
+    lines.push("✅ Semua lunas");
   } else {
-    lines.push("💸 *Yang perlu transfer:*");
+    lines.push("*Transfer*");
     tx.forEach((t) => {
-      const acct = t.to.account ? ` → ${t.to.account}` : "";
-      lines.push(`• ${t.from.name} bayar *${rp(t.amount)}* ke ${t.to.name}${acct}`);
+      const acct = t.to.account ? `\n     ${t.to.account}` : "";
+      lines.push(`• ${t.from.name} → ${t.to.name}  *${rp(t.amount)}*${acct}`);
     });
   }
   return lines.join("\n");
 }
 
-// ── Dark mode hook ────────────────────────────────────────────────────
+// ── Dark mode ─────────────────────────────────────────────────────────
 function useDark() {
-  const [dark, setDark] = useState(() => {
-    try { return localStorage.getItem("splitbill-dark") === "1"; } catch { return false; }
-  });
-  const toggle = () => setDark((d) => {
-    try { localStorage.setItem("splitbill-dark", d ? "0" : "1"); } catch {}
-    return !d;
-  });
+  const [dark, setDark] = useState(() => { try { return localStorage.getItem("sb-dark") === "1"; } catch { return false; } });
+  const toggle = () => setDark((d) => { try { localStorage.setItem("sb-dark", d ? "0" : "1"); } catch {} return !d; });
   return [dark, toggle];
 }
 
 // ── Theme ─────────────────────────────────────────────────────────────
 const T = {
   light: {
-    bg: "#faf4ea", card: "#fff", header: "linear-gradient(150deg,#c75b39,#a8432a)",
-    text: "#2a1f1a", muted: "#8a7d6e", border: "#e6d9c6", input: "#fff",
-    pill: "#f5ede0", accent: "#c75b39", accentText: "#fff",
-    shadow: "0 2px 8px #00000010", settingBg: "#f5ede0",
+    bg: "#fafaf9", surface: "#ffffff", subtle: "#f5f5f4",
+    text: "#1c1917", textSoft: "#44403c", muted: "#78716c",
+    border: "#e7e5e4", divider: "#f5f5f4",
+    accent: "#ea580c", accentSoft: "#fff7ed", accentText: "#ffffff",
+    danger: "#dc2626", success: "#16a34a",
   },
   dark: {
-    bg: "#1a1410", card: "#251e18", header: "linear-gradient(150deg,#8a3520,#6b2918)",
-    text: "#f0e8dc", muted: "#a89880", border: "#3a2e24", input: "#2e2318",
-    pill: "#2e2318", accent: "#c75b39", accentText: "#fff",
-    shadow: "0 2px 8px #00000040", settingBg: "#2e2318",
+    bg: "#0c0a09", surface: "#1c1917", subtle: "#1c1917",
+    text: "#fafaf9", textSoft: "#d6d3d1", muted: "#a8a29e",
+    border: "#292524", divider: "#1c1917",
+    accent: "#fb923c", accentSoft: "#1c1310", accentText: "#0c0a09",
+    danger: "#f87171", success: "#4ade80",
   },
 };
+
+// ── Avatar circle ─────────────────────────────────────────────────────
+function Avatar({ name, color, size = 28 }) {
+  const initial = (name || "?").charAt(0).toUpperCase();
+  return (
+    <span style={{
+      width: size, height: size, borderRadius: size,
+      background: color, color: "#fff",
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      fontSize: size * 0.42, fontWeight: 700, flexShrink: 0,
+      letterSpacing: 0,
+    }}>{initial}</span>
+  );
+}
+
+// ── Reusable styles ───────────────────────────────────────────────────
+const num = { fontVariantNumeric: "tabular-nums" };
+const ov = { position: "fixed", inset: 0, background: "#0c0a0966", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50, backdropFilter: "blur(4px)" };
+const modalSt = (t) => ({ background: t.bg, width: "100%", maxWidth: 520, borderRadius: "20px 20px 0 0", padding: "20px 18px 28px", animation: "slideUp .25s cubic-bezier(.2,.9,.3,1) both", border: `1px solid ${t.border}`, borderBottom: "none" });
+const mTitle = (t) => ({ fontSize: 22, fontWeight: 700, margin: 0, color: t.text, letterSpacing: -0.4 });
+const labelSt = (t) => ({ fontSize: 11, fontWeight: 600, color: t.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, marginTop: 18 });
+const inputSt = (t) => ({ width: "100%", padding: "12px 14px", border: `1px solid ${t.border}`, borderRadius: 10, fontSize: 15, background: t.surface, color: t.text, display: "block", fontFamily: "inherit" });
+const btnX = (t) => ({ border: "none", background: "transparent", color: t.muted, width: 36, height: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" });
+const btnPrimary = (t) => ({ flex: 2, padding: "13px 18px", border: "none", background: t.accent, color: t.accentText, borderRadius: 12, fontWeight: 600, fontSize: 15, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, cursor: "pointer", fontFamily: "inherit" });
+const btnSecondary = (t) => ({ flex: 1, padding: "13px 18px", border: `1px solid ${t.border}`, background: t.surface, borderRadius: 12, fontWeight: 600, fontSize: 15, color: t.textSoft, cursor: "pointer", fontFamily: "inherit" });
+const btnGhost = (t) => ({ padding: "8px 12px", border: `1px solid ${t.border}`, background: t.surface, borderRadius: 10, fontWeight: 500, fontSize: 13, color: t.textSoft, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" });
 
 // ── Category chips ────────────────────────────────────────────────────
 function CatChips({ value, onChange, t }) {
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-      {CATEGORIES.map((c) => (
-        <button key={c.id} onClick={() => onChange(c.id)} style={{
-          display: "inline-flex", alignItems: "center", gap: 5,
-          padding: "6px 12px", borderRadius: 20, fontSize: 13, fontWeight: 600,
-          border: `1.5px solid ${value === c.id ? c.color : t.border}`,
-          background: value === c.id ? c.color + "22" : t.input,
-          color: value === c.id ? c.color : t.muted,
-        }}>
-          <c.icon size={13} />{c.label}
-        </button>
-      ))}
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {CATEGORIES.map((c) => {
+        const on = value === c.id;
+        return (
+          <button key={c.id} onClick={() => onChange(c.id)} style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            padding: "7px 12px", borderRadius: 8, fontSize: 13, fontWeight: 500,
+            border: `1px solid ${on ? c.color : t.border}`,
+            background: on ? c.color + "12" : t.surface,
+            color: on ? c.color : t.textSoft,
+            cursor: "pointer", fontFamily: "inherit",
+          }}>
+            <c.icon size={13} strokeWidth={2} />{c.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -265,22 +257,78 @@ function CatChips({ value, onChange, t }) {
 function ExportModal({ tripName, members, expenses, tx, onClose, t }) {
   const text = useMemo(() => buildWAText(tripName, members, expenses, tx), [tripName, members, expenses, tx]);
   const [copied, setCopied] = useState(false);
-  const copy = () => { navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); };
+  const copy = () => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   const share = () => { if (navigator.share) navigator.share({ text }); else copy(); };
   return (
     <div style={ov} onClick={onClose}>
-      <div style={modal(t)} onClick={(e) => e.stopPropagation()}>
+      <div style={{ ...modalSt(t), maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <h3 style={mTitle(t)}>Export ke WhatsApp</h3>
-          <button onClick={onClose} style={closeBtn(t)}><X size={18} /></button>
+          <h3 style={mTitle(t)}>Ringkasan</h3>
+          <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
         </div>
-        <div style={{ flex: 1, overflowY: "auto", background: t.input, border: `1px solid ${t.border}`, borderRadius: 12, padding: 14, fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap", fontFamily: "monospace", color: t.text, marginBottom: 14, maxHeight: "52vh" }}>
+        <div style={{ flex: 1, overflowY: "auto", background: t.subtle, border: `1px solid ${t.border}`, borderRadius: 10, padding: 14, fontSize: 13, lineHeight: 1.65, whiteSpace: "pre-wrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: t.text, marginBottom: 14, maxHeight: "55vh", ...num }}>
           {text}
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={copy} style={secBtn(t)}>{copied ? "✓ Disalin!" : "Copy teks"}</button>
-          <button onClick={share} style={priBtn(t)}><Share2 size={16} /> Bagikan</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={copy} style={btnSecondary(t)}>{copied ? "Tersalin" : "Salin"}</button>
+          <button onClick={share} style={btnPrimary(t)}><Share2 size={15} /> Bagikan</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Trip Selector ─────────────────────────────────────────────────────
+function TripSelector({ currentId, trips, onSelect, onCreate, onDelete, onClose, t }) {
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName]   = useState("");
+  const [confirmDel, setConfirmDel] = useState(null);
+  const create = () => { if (!newName.trim()) return; onCreate(newName.trim()); setNewName(""); setCreating(false); };
+
+  return (
+    <div style={ov} onClick={onClose}>
+      <div style={modalSt(t)} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={mTitle(t)}>Trip</h3>
+          <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 1, maxHeight: "50vh", overflowY: "auto", background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+          {trips.map((trip, idx) => {
+            const isCurrent = trip.id === currentId;
+            const isDel = confirmDel === trip.id;
+            return (
+              <div key={trip.id} style={{ borderTop: idx > 0 ? `1px solid ${t.divider}` : "none", display: "flex", alignItems: "stretch" }}>
+                <button onClick={() => onSelect(trip.id)} style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, padding: "13px 14px", background: isCurrent ? t.accentSoft : "transparent", border: "none", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+                  <span style={{ fontWeight: 600, fontSize: 15, flex: 1, color: isCurrent ? t.accent : t.text }}>{trip.data?.name || trip.id}</span>
+                  {isCurrent && <Check size={16} style={{ color: t.accent }} />}
+                </button>
+                {isDel ? (
+                  <div style={{ display: "flex", padding: "8px" }}>
+                    <button onClick={() => { onDelete(trip.id); setConfirmDel(null); }} style={{ padding: "0 14px", background: t.danger, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Hapus</button>
+                    <button onClick={() => setConfirmDel(null)} style={{ padding: "0 12px", background: "transparent", color: t.muted, border: "none", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Batal</button>
+                  </div>
+                ) : (
+                  trips.length > 1 && (
+                    <button onClick={() => setConfirmDel(trip.id)} title="Hapus trip" style={{ padding: "0 14px", background: "transparent", color: t.muted, border: "none", display: "flex", alignItems: "center", cursor: "pointer" }}>
+                      <Trash2 size={14} />
+                    </button>
+                  )
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {creating ? (
+          <div style={{ marginTop: 12 }}>
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} placeholder="Nama trip" style={inputSt(t)} autoFocus />
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button onClick={() => setCreating(false)} style={btnSecondary(t)}>Batal</button>
+              <button onClick={create} style={btnPrimary(t)}>Buat</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setCreating(true)} style={{ ...btnPrimary(t), width: "100%", marginTop: 12 }}><Plus size={15} /> Trip baru</button>
+        )}
       </div>
     </div>
   );
@@ -288,13 +336,13 @@ function ExportModal({ tripName, members, expenses, tx, onClose, t }) {
 
 // ── Detail / Edit Modal ───────────────────────────────────────────────
 function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
-  const [photo, setPhoto]           = useState(null);
+  const [photo, setPhoto]       = useState(null);
   const [photoState, setPhotoState] = useState(expense.hasReceipt ? "loading" : "none");
-  const [editing, setEditing]       = useState(false);
-  const [editDesc, setEditDesc]     = useState(expense.desc);
-  const [editAmt, setEditAmt]       = useState(String(expense.amount));
-  const [editPaidBy, setEditPaidBy] = useState(expense.paidBy);
-  const [editCat, setEditCat]       = useState(expense.category || "lainnya");
+  const [editing, setEditing]   = useState(false);
+  const [editDesc, setEditDesc] = useState(expense.desc);
+  const [editAmt, setEditAmt]   = useState(String(expense.amount));
+  const [editPaid, setEditPaid] = useState(expense.paidBy);
+  const [editCat, setEditCat]   = useState(expense.category || "lainnya");
 
   useEffect(() => {
     if (!expense.hasReceipt) return;
@@ -305,18 +353,14 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
 
   const nameOf  = (id) => members.find((m) => m.id === id)?.name  || "?";
   const colorOf = (id) => members.find((m) => m.id === id)?.color || "#999";
-  const dateStr = new Date(expense.at || Date.now()).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
   const saveEdit = () => {
     let shares, amount;
     if (expense.items && expense.items.length > 0) {
-      // Scanned expense: preserve per-item allocation, recompute from items
       const charges = expense.charges || { tax: 0, service: 0, discount: 0 };
       const result = computeReceiptShares(expense.items, charges, members);
-      shares = result.shares;
-      amount = result.amount;
+      shares = result.shares; amount = result.amount;
     } else {
-      // Manual expense: equal split
       const amt = parseInt(String(editAmt).replace(/\D/g, ""), 10);
       if (!editDesc.trim() || !amt) return;
       const among = Object.keys(expense.shares || {});
@@ -325,129 +369,142 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
       amount = amt;
     }
     if (!editDesc.trim() || amount <= 0) return;
-    onUpdate({ ...expense, desc: editDesc.trim(), amount, paidBy: editPaidBy, shares, category: editCat });
+    onUpdate({ ...expense, desc: editDesc.trim(), amount, paidBy: editPaid, shares, category: editCat });
     setEditing(false);
   };
 
   const cat = catOf(expense.category);
-  const inp = { ...inputStyle(t), marginTop: 0 };
 
   return (
     <div style={ov} onClick={onClose}>
-      <div style={modal(t)} onClick={(e) => e.stopPropagation()}>
-        <div style={{ maxHeight: "86vh", overflowY: "auto", padding: "0 2px 4px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+      <div style={modalSt(t)} onClick={(e) => e.stopPropagation()}>
+        <div style={{ maxHeight: "85vh", overflowY: "auto", margin: "-4px -4px 0", padding: 4 }}>
+          {/* header row */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, letterSpacing: 2, fontWeight: 700, color: t.accent }}>
-                {expense.scanned ? "DARI STRUK" : "MANUAL"} · {dateStr}
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 6, background: cat.color + "15", color: cat.color, fontSize: 11.5, fontWeight: 600, marginBottom: 8 }}>
+                <cat.icon size={11} strokeWidth={2.2} />{cat.label}
+                {expense.scanned && <span style={{ marginLeft: 4, opacity: 0.7 }}>· dari struk</span>}
               </div>
               {editing
-                ? <input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} style={{ ...inp, fontFamily: "Fraunces, serif", fontSize: 20, fontWeight: 600, marginTop: 4 }} />
-                : <h3 style={{ ...mTitle(t), marginTop: 4 }}>{expense.desc}</h3>}
+                ? <input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} style={{ ...inputSt(t), fontSize: 20, fontWeight: 600, padding: "8px 10px" }} />
+                : <h3 style={{ ...mTitle(t), fontSize: 24 }}>{expense.desc}</h3>}
             </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => setEditing(!editing)} style={{ ...closeBtn(t), color: editing ? t.accent : t.muted }}><Pencil size={16} /></button>
-              <button onClick={onClose} style={closeBtn(t)}><X size={18} /></button>
+            <div style={{ display: "flex", gap: 4 }}>
+              <button onClick={() => setEditing(!editing)} style={{ ...btnX(t), color: editing ? t.accent : t.muted }}><Pencil size={16} /></button>
+              <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
             </div>
           </div>
 
-          {!editing && (
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, padding: "4px 10px", borderRadius: 20, background: cat.color + "18", color: cat.color, fontSize: 12.5, fontWeight: 700 }}>
-              <cat.icon size={13} />{cat.label}
-            </div>
-          )}
-
           {editing ? (
-            <div style={{ marginTop: 12 }}>
-              <div style={fLabel(t)}>Kategori</div>
-              <CatChips value={editCat} onChange={setEditCat} t={t} />
-              {!expense.scanned && (<>
-                <div style={fLabel(t)}>Jumlah</div>
-                <input value={parseInt(String(editAmt).replace(/\D/g,"")||"0",10).toLocaleString("id-ID")} onChange={(e) => setEditAmt(e.target.value.replace(/\D/g,""))} inputMode="numeric" style={inp} />
-              </>)}
-              {expense.scanned && (<div style={{ marginTop: 14, padding: "10px 12px", background: t.accent + "15", borderRadius: 10, fontSize: 12.5, color: t.muted, lineHeight: 1.5 }}>💡 Jumlah otomatis dihitung dari item struk. Untuk ubah jumlah, edit per-item dengan scan ulang.</div>)}
-              <div style={fLabel(t)}>Dibayar oleh</div>
-              <select value={editPaidBy} onChange={(e) => setEditPaidBy(e.target.value)} style={inp}>
-                {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                <button onClick={() => { onDelete(expense.id); onClose(); }} style={{ ...secBtn(t), color: "#c1121f", borderColor: "#c1121f44" }}>Hapus</button>
-                <button onClick={saveEdit} style={priBtn(t)}>Simpan</button>
-              </div>
-            </div>
-          ) : (
             <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", background: t.accent, color: "#fff", padding: "14px 18px", borderRadius: 16, marginTop: 14, fontSize: 13, letterSpacing: 1, textTransform: "uppercase", fontWeight: 700 }}>
-                <span>Total</span>
-                <span style={{ fontFamily: "Fraunces, serif", fontWeight: 600, fontSize: 26 }}>{rp(expense.amount)}</span>
-              </div>
-              <div style={{ fontSize: 13.5, color: t.muted, marginTop: 8 }}>
-                Dibayar <b style={{ color: colorOf(expense.paidBy) }}>{nameOf(expense.paidBy)}</b>
-              </div>
-
-              {expense.hasReceipt && (
-                <div style={{ marginTop: 18 }}>
-                  <div style={secLabel(t)}><Camera size={13} /> Foto struk</div>
-                  <div style={{ marginTop: 8, background: t.card, borderRadius: 14, padding: 8 }}>
-                    {photoState === "loading" && <div style={{ padding: "30px 0", textAlign: "center", color: t.muted }}><Loader2 size={22} style={{ animation: "spin 1s linear infinite" }} /></div>}
-                    {photoState === "ok" && photo && <img src={photo} alt="Struk" style={{ width: "100%", borderRadius: 10, display: "block", maxHeight: 420, objectFit: "contain" }} />}
-                    {photoState === "missing" && <div style={{ padding: "20px 0", textAlign: "center", color: t.muted, fontSize: 13 }}>Foto tidak tersedia.</div>}
-                  </div>
+              <div style={labelSt(t)}>Kategori</div>
+              <CatChips value={editCat} onChange={setEditCat} t={t} />
+              {!expense.scanned && (
+                <>
+                  <div style={labelSt(t)}>Jumlah</div>
+                  <input value={parseInt(String(editAmt).replace(/\D/g,"")||"0",10).toLocaleString("id-ID")} onChange={(e) => setEditAmt(e.target.value.replace(/\D/g,""))} inputMode="numeric" style={{ ...inputSt(t), ...num }} />
+                </>
+              )}
+              {expense.scanned && (
+                <div style={{ marginTop: 14, padding: "10px 12px", background: t.accentSoft, borderRadius: 8, fontSize: 12.5, color: t.textSoft, lineHeight: 1.5, border: `1px solid ${t.accent}22` }}>
+                  Jumlah otomatis dari rincian item. Edit per-item di bawah untuk ubah pembagian.
                 </div>
               )}
+              <div style={labelSt(t)}>Dibayar oleh</div>
+              <select value={editPaid} onChange={(e) => setEditPaid(e.target.value)} style={inputSt(t)}>
+                {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+                <button onClick={() => { onDelete(expense.id); onClose(); }} style={{ ...btnSecondary(t), color: t.danger, borderColor: t.danger + "44" }}><Trash2 size={14} /> Hapus</button>
+                <button onClick={saveEdit} style={btnPrimary(t)}>Simpan perubahan</button>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Total card */}
+              <div style={{ padding: "18px 18px", borderRadius: 14, background: t.surface, border: `1px solid ${t.border}`, marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: t.muted, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>Total</div>
+                <div style={{ fontSize: 32, fontWeight: 700, letterSpacing: -1, marginTop: 2, color: t.text, ...num }}>{rp(expense.amount)}</div>
+                <div style={{ fontSize: 13, color: t.muted, marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                  Dibayar
+                  <Avatar name={nameOf(expense.paidBy)} color={colorOf(expense.paidBy)} size={20} />
+                  <span style={{ color: t.textSoft, fontWeight: 600 }}>{nameOf(expense.paidBy)}</span>
+                </div>
+              </div>
 
-              {expense.items?.length > 0 && (
+              {/* Photo */}
+              {expense.hasReceipt && (
                 <>
-                  <div style={{ ...secLabel(t), marginTop: 20 }}><Receipt size={13} /> Rincian item <span style={{ textTransform: "none", fontSize: 11, color: t.muted, fontWeight: 500, letterSpacing: 0 }}>· tap nama untuk ubah</span></div>
-                  {expense.items.map((it, idx) => (
-                    <div key={idx} style={{ background: t.card, borderRadius: 12, padding: "11px 14px", marginTop: 8 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                        <span style={{ fontWeight: 600, fontSize: 14.5, flex: 1, color: t.text }}>{it.name}</span>
-                        <span style={{ fontWeight: 600, fontSize: 14.5, whiteSpace: "nowrap", color: t.text }}>{rp(it.price)}</span>
-                      </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
-                        {members.map((m) => {
-                          const on = (it.who || []).includes(m.id);
-                          return (
-                            <button key={m.id} onClick={() => {
-                              const newItems = expense.items.map((x, i) => i !== idx ? x : { ...x, who: on ? (x.who || []).filter((y) => y !== m.id) : [...(x.who || []), m.id] });
-                              const charges = expense.charges || { tax: 0, service: 0, discount: 0 };
-                              const { shares, amount } = computeReceiptShares(newItems, charges, members);
-                              if (Object.keys(shares).length === 0) return;
-                              onUpdate({ ...expense, items: newItems, shares, amount });
-                            }}
-                            style={{ padding: "4px 10px", borderRadius: 14, fontSize: 11.5, fontWeight: 700, border: `1.5px solid ${on ? m.color : t.border}`, background: on ? m.color + "22" : t.input, color: on ? m.color : t.muted + "99", cursor: "pointer" }}>
-                              {m.name}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                  {expense.charges && (
-                    <div style={{ marginTop: 8, padding: "10px 14px", background: t.card, borderRadius: 12 }}>
-                      {!!expense.charges.tax      && <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 13.5, color: t.muted }}><span>Pajak</span><span>{rp(expense.charges.tax)}</span></div>}
-                      {!!expense.charges.service  && <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 13.5, color: t.muted }}><span>Service charge</span><span>{rp(expense.charges.service)}</span></div>}
-                      {!!expense.charges.discount && <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 13.5, color: t.muted }}><span>Diskon</span><span style={{ color: "#2d6a4f" }}>−{rp(expense.charges.discount)}</span></div>}
-                    </div>
-                  )}
+                  <div style={labelSt(t)}>Foto struk</div>
+                  <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 6, overflow: "hidden" }}>
+                    {photoState === "loading" && <div style={{ padding: "40px 0", textAlign: "center", color: t.muted }}><Loader2 size={20} style={{ animation: "spin 1s linear infinite" }} /></div>}
+                    {photoState === "ok" && photo && <img src={photo} alt="Struk" style={{ width: "100%", borderRadius: 8, display: "block", maxHeight: 400, objectFit: "contain" }} />}
+                    {photoState === "missing" && <div style={{ padding: "30px 0", textAlign: "center", color: t.muted, fontSize: 13 }}>Foto tidak tersedia</div>}
+                  </div>
                 </>
               )}
 
-              <div style={{ ...secLabel(t), marginTop: 20 }}><Users size={13} /> Pembagian</div>
-              <div style={{ background: t.card, borderRadius: 14, padding: "10px 14px", marginTop: 8 }}>
-                {Object.entries(expense.shares || {}).map(([id, amt]) => (
-                  <div key={id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${t.bg}` }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 9, background: colorOf(id) }} />
-                      <span style={{ fontWeight: 600, color: t.text }}>{nameOf(id)}</span>
-                      {id === expense.paidBy && <span style={{ fontSize: 10.5, letterSpacing: 1, fontWeight: 700, color: t.accent, background: t.accent + "18", padding: "2px 7px", borderRadius: 10, textTransform: "uppercase" }}>nalangin</span>}
+              {/* Items */}
+              {expense.items?.length > 0 && (
+                <>
+                  <div style={{ ...labelSt(t), display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span>Rincian</span>
+                    <span style={{ textTransform: "none", letterSpacing: 0, fontSize: 11, fontWeight: 400 }}>tap nama untuk ubah</span>
+                  </div>
+                  <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+                    {expense.items.map((it, idx) => (
+                      <div key={idx} style={{ padding: "12px 14px", borderTop: idx > 0 ? `1px solid ${t.divider}` : "none" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                          <span style={{ fontWeight: 500, fontSize: 14.5, flex: 1, color: t.text }}>{it.name}</span>
+                          <span style={{ fontWeight: 600, fontSize: 14.5, whiteSpace: "nowrap", color: t.text, ...num }}>{rp(it.price)}</span>
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                          {members.map((m) => {
+                            const on = (it.who || []).includes(m.id);
+                            return (
+                              <button key={m.id} onClick={() => {
+                                const newItems = expense.items.map((x, i) => i !== idx ? x : { ...x, who: on ? (x.who || []).filter((y) => y !== m.id) : [...(x.who || []), m.id] });
+                                const charges = expense.charges || { tax: 0, service: 0, discount: 0 };
+                                const { shares, amount } = computeReceiptShares(newItems, charges, members);
+                                if (Object.keys(shares).length === 0) return;
+                                onUpdate({ ...expense, items: newItems, shares, amount });
+                              }}
+                              style={{ padding: "4px 9px", borderRadius: 7, fontSize: 12, fontWeight: 600, border: `1px solid ${on ? m.color : t.border}`, background: on ? m.color + "18" : "transparent", color: on ? m.color : t.muted, cursor: "pointer", fontFamily: "inherit" }}>
+                                {m.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    {expense.charges && (!!expense.charges.tax || !!expense.charges.service || !!expense.charges.discount) && (
+                      <div style={{ padding: "10px 14px", borderTop: `1px solid ${t.divider}`, background: t.subtle }}>
+                        {!!expense.charges.tax      && <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", fontSize: 13, color: t.muted, ...num }}><span>Pajak</span><span>{rp(expense.charges.tax)}</span></div>}
+                        {!!expense.charges.service  && <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", fontSize: 13, color: t.muted, ...num }}><span>Service</span><span>{rp(expense.charges.service)}</span></div>}
+                        {!!expense.charges.discount && <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", fontSize: 13, color: t.success, ...num }}><span>Diskon</span><span>−{rp(expense.charges.discount)}</span></div>}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Per-person */}
+              <div style={labelSt(t)}>Pembagian</div>
+              <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+                {Object.entries(expense.shares || {}).map(([id, amt], idx) => (
+                  <div key={id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", borderTop: idx > 0 ? `1px solid ${t.divider}` : "none" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Avatar name={nameOf(id)} color={colorOf(id)} size={26} />
+                      <span style={{ fontWeight: 500, color: t.text }}>{nameOf(id)}</span>
+                      {id === expense.paidBy && <span style={{ fontSize: 10.5, letterSpacing: 0.5, fontWeight: 700, color: t.accent, background: t.accentSoft, padding: "2px 7px", borderRadius: 5, textTransform: "uppercase" }}>nalangin</span>}
                     </span>
-                    <span style={{ fontWeight: 700, color: t.text }}>{rp(amt)}</span>
+                    <span style={{ fontWeight: 600, color: t.text, ...num }}>{rp(amt)}</span>
                   </div>
                 ))}
               </div>
-              <button onClick={onClose} style={{ ...secBtn(t), width: "100%", marginTop: 18 }}>Tutup</button>
+
+              <button onClick={onClose} style={{ ...btnSecondary(t), width: "100%", marginTop: 18 }}>Tutup</button>
             </>
           )}
         </div>
@@ -472,10 +529,8 @@ function ScanModal({ members, onClose, onSave, t }) {
     if (!file) return;
     try {
       setStep("loading");
-      // Save ORIGINAL photo (no compression) for archive
       const originalUrl = await readAsDataURL(file);
       setPhoto(originalUrl);
-      // High-quality version for AI scanning (accurate text recognition)
       const aiUrl = await prepareForAI(file);
       const b64 = aiUrl.split(",")[1];
       const prompt = 'Kamu parser struk belanja. Balas HANYA JSON minified valid tanpa markdown. Skema: {"merchant":string,"items":[{"name":string,"price":number}],"tax":number,"service":number,"discount":number,"total":number}. price = total harga baris dalam rupiah, angka bulat. Jika tidak ada isi 0.';
@@ -486,14 +541,13 @@ function ScanModal({ members, onClose, onSave, t }) {
       setItems((parsed.items || []).map((it) => ({ id: uid(), name: it.name || "Item", price: Math.round(Number(it.price)||0), who: members.map((m) => m.id) })));
       setCharges({ tax: Math.round(Number(parsed.tax)||0), service: Math.round(Number(parsed.service)||0), discount: Math.round(Number(parsed.discount)||0) });
       setStep("review");
-    } catch { setErrMsg("Gagal membaca struk. Coba foto yang lebih jelas."); setStep("error"); }
+    } catch { setErrMsg("Tidak bisa membaca struk. Coba foto yang lebih jelas."); setStep("error"); }
   };
 
   const toggleWho  = (iid, mid) => setItems((a) => a.map((it) => it.id !== iid ? it : { ...it, who: it.who.includes(mid) ? it.who.filter((x) => x !== mid) : [...it.who, mid] }));
   const setField   = (iid, f, v) => setItems((a) => a.map((it) => it.id !== iid ? it : { ...it, [f]: v }));
   const removeItem = (iid) => setItems((a) => a.filter((it) => it.id !== iid));
   const preview    = useMemo(() => computeReceiptShares(items, charges, members), [items, charges, members]);
-  const inp        = inputStyle(t);
 
   const save = () => {
     const { shares, amount } = preview;
@@ -503,68 +557,91 @@ function ScanModal({ members, onClose, onSave, t }) {
 
   return (
     <div style={ov} onClick={onClose}>
-      <div style={modal(t)} onClick={(e) => e.stopPropagation()}>
+      <div style={modalSt(t)} onClick={(e) => e.stopPropagation()}>
         {step === "upload" && (
-          <div style={{ textAlign: "center", padding: "10px 0" }}>
-            <div style={{ width: 64, height: 64, borderRadius: 20, background: t.accent + "18", color: t.accent, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}><Camera size={30} /></div>
-            <h3 style={mTitle(t)}>Scan struk</h3>
-            <p style={{ color: t.muted, fontSize: 14, margin: "0 0 18px", lineHeight: 1.5 }}>Foto atau pilih gambar struk — AI membaca item otomatis.</p>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleFile(e.target.files[0])} />
-            <button onClick={() => fileRef.current.click()} style={priBtn(t)}><Sparkles size={17} /> Pilih foto struk</button>
-            <button onClick={onClose} style={{ ...secBtn(t), width: "100%", marginTop: 10 }}>Batal</button>
+          <div style={{ padding: "8px 0 4px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={mTitle(t)}>Scan struk</h3>
+              <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
+            </div>
+            <div style={{ textAlign: "center", padding: "30px 0" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 14, background: t.accentSoft, color: t.accent, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}><Camera size={26} /></div>
+              <p style={{ color: t.muted, fontSize: 14, margin: "0 0 18px", lineHeight: 1.5 }}>Foto struk akan dibaca otomatis oleh AI</p>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleFile(e.target.files[0])} />
+              <button onClick={() => fileRef.current.click()} style={{ ...btnPrimary(t), width: "100%" }}><Sparkles size={15} /> Pilih foto struk</button>
+            </div>
           </div>
         )}
         {step === "loading" && (
-          <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <Loader2 size={34} style={{ color: t.accent, animation: "spin 1s linear infinite" }} />
-            <p style={{ fontFamily: "Fraunces, serif", fontSize: 18, marginTop: 14, color: t.accent }}>Membaca struk…</p>
-            <p style={{ color: t.muted, fontSize: 13, marginTop: 6 }}>Biasanya 5–10 detik</p>
+          <div style={{ textAlign: "center", padding: "50px 0" }}>
+            <Loader2 size={28} style={{ color: t.accent, animation: "spin 1s linear infinite" }} />
+            <p style={{ fontSize: 15, fontWeight: 600, marginTop: 14, color: t.text }}>Membaca struk</p>
+            <p style={{ color: t.muted, fontSize: 13, marginTop: 4 }}>Biasanya 5–10 detik</p>
           </div>
         )}
         {step === "error" && (
-          <div style={{ textAlign: "center", padding: "20px 0" }}>
+          <div style={{ textAlign: "center", padding: "30px 0" }}>
             <h3 style={mTitle(t)}>Hmm…</h3>
-            <p style={{ color: t.muted, fontSize: 14, margin: "0 0 18px" }}>{errMsg}</p>
-            <button onClick={() => setStep("upload")} style={priBtn(t)}>Coba lagi</button>
-            <button onClick={onClose} style={{ ...secBtn(t), width: "100%", marginTop: 10 }}>Batal</button>
+            <p style={{ color: t.muted, fontSize: 14, margin: "8px 0 18px" }}>{errMsg}</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={onClose} style={btnSecondary(t)}>Tutup</button>
+              <button onClick={() => setStep("upload")} style={btnPrimary(t)}>Coba lagi</button>
+            </div>
           </div>
         )}
         {step === "review" && (
-          <div style={{ maxHeight: "78vh", overflowY: "auto", margin: "-4px -4px 0", padding: 4 }}>
-            {photoUrl && <div style={{ marginBottom: 14, borderRadius: 12, overflow: "hidden", maxHeight: 140 }}><img src={photoUrl} alt="Struk" style={{ width: "100%", objectFit: "cover", display: "block", maxHeight: 140 }} /></div>}
-            <input value={merchant} onChange={(e) => setMerchant(e.target.value)} style={{ ...inp, fontFamily: "Fraunces, serif", fontSize: 20, fontWeight: 600, padding: "8px 12px", border: `1.5px dashed ${t.border}` }} />
-            <div style={fLabel(t)}>Kategori</div>
+          <div style={{ maxHeight: "82vh", overflowY: "auto", margin: "-4px -4px 0", padding: 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h3 style={mTitle(t)}>Hasil scan</h3>
+              <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
+            </div>
+            {photoUrl && <div style={{ marginBottom: 14, borderRadius: 10, overflow: "hidden", maxHeight: 120, border: `1px solid ${t.border}` }}><img src={photoUrl} alt="Struk" style={{ width: "100%", objectFit: "cover", display: "block", maxHeight: 120 }} /></div>}
+            <input value={merchant} onChange={(e) => setMerchant(e.target.value)} style={{ ...inputSt(t), fontSize: 18, fontWeight: 600 }} />
+            <div style={labelSt(t)}>Kategori</div>
             <CatChips value={category} onChange={setCat} t={t} />
-            <div style={fLabel(t)}>Item — pilih siapa yang ikut</div>
-            {items.map((it) => (
-              <div key={it.id} style={{ background: t.card, borderRadius: 13, padding: "11px 12px", marginBottom: 8 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input value={it.name} onChange={(e) => setField(it.id, "name", e.target.value)} style={{ ...inp, flex: 1, padding: "7px 10px", fontSize: 14 }} />
-                  <input value={(it.price||0).toLocaleString("id-ID")} onChange={(e) => setField(it.id, "price", parseInt(e.target.value.replace(/\D/g,"")||"0",10))} inputMode="numeric" style={{ ...inp, width: 88, padding: "7px 10px", fontSize: 14, textAlign: "right" }} />
-                  <button onClick={() => removeItem(it.id)} style={{ border: "none", background: "none", color: "#c1121f", padding: 4, display: "flex" }}><X size={15} /></button>
+            <div style={{ ...labelSt(t), display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span>Item</span>
+              <span style={{ textTransform: "none", letterSpacing: 0, fontSize: 11, fontWeight: 400 }}>tap nama untuk pilih</span>
+            </div>
+            <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+              {items.map((it, idx) => (
+                <div key={it.id} style={{ padding: "10px 12px", borderTop: idx > 0 ? `1px solid ${t.divider}` : "none" }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 7 }}>
+                    <input value={it.name} onChange={(e) => setField(it.id, "name", e.target.value)} style={{ ...inputSt(t), flex: 1, padding: "6px 9px", fontSize: 13.5, border: `1px solid ${t.divider}` }} />
+                    <input value={(it.price||0).toLocaleString("id-ID")} onChange={(e) => setField(it.id, "price", parseInt(e.target.value.replace(/\D/g,"")||"0",10))} inputMode="numeric" style={{ ...inputSt(t), width: 88, padding: "6px 9px", fontSize: 13.5, textAlign: "right", border: `1px solid ${t.divider}`, ...num }} />
+                    <button onClick={() => removeItem(it.id)} style={{ border: "none", background: "transparent", color: t.danger, padding: 5, display: "flex", cursor: "pointer", borderRadius: 6 }}><X size={14} /></button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {members.map((m) => { const on = it.who.includes(m.id); return (<button key={m.id} onClick={() => toggleWho(it.id, m.id)} style={{ padding: "4px 9px", border: `1px solid ${on ? m.color : t.border}`, borderRadius: 7, background: on ? m.color + "18" : "transparent", fontSize: 12, fontWeight: 600, color: on ? m.color : t.muted, cursor: "pointer", fontFamily: "inherit" }}>{m.name}</button>); })}
+                  </div>
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                  {members.map((m) => { const on = it.who.includes(m.id); return (<button key={m.id} onClick={() => toggleWho(it.id, m.id)} style={{ padding: "5px 11px", border: `1.5px solid ${on ? m.color : t.border}`, borderRadius: 16, background: on ? m.color : t.input, fontSize: 12.5, fontWeight: 600, color: on ? "#fff" : t.muted }}>{m.name}</button>); })}
-                </div>
+              ))}
+              <div style={{ padding: "10px 12px", borderTop: `1px solid ${t.divider}`, background: t.subtle }}>
+                {[["Pajak","tax"],["Service","service"],["Diskon","discount"]].map(([label, key]) => (
+                  <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13.5, color: t.muted }}>
+                    <span>{label}</span>
+                    <input value={(charges[key]||0).toLocaleString("id-ID")} inputMode="numeric" onChange={(e) => setCharges({ ...charges, [key]: parseInt(e.target.value.replace(/\D/g,"")||"0",10) })} style={{ width: 100, padding: "5px 8px", border: `1px solid ${t.border}`, borderRadius: 7, fontSize: 13, textAlign: "right", background: t.surface, color: t.text, fontFamily: "inherit", ...num }} />
+                  </div>
+                ))}
               </div>
-            ))}
-            {[["Pajak (PB1)","tax"],["Service charge","service"],["Diskon","discount"]].map(([label, key]) => (
-              <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 2px", fontSize: 14, fontWeight: 600, color: t.muted }}>
-                <span>{label}</span>
-                <input value={(charges[key]||0).toLocaleString("id-ID")} inputMode="numeric" onChange={(e) => setCharges({ ...charges, [key]: parseInt(e.target.value.replace(/\D/g,"")||"0",10) })} style={{ width: 110, padding: "7px 10px", border: `1.5px solid ${t.border}`, borderRadius: 10, fontSize: 14, textAlign: "right", background: t.input, color: t.text }} />
-              </div>
-            ))}
-            <div style={fLabel(t)}>Dibayar oleh</div>
-            <select value={paidBy} onChange={(e) => setPaidBy(e.target.value)} style={inp}>
+            </div>
+
+            <div style={labelSt(t)}>Dibayar oleh</div>
+            <select value={paidBy} onChange={(e) => setPaidBy(e.target.value)} style={inputSt(t)}>
               {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
-            <div style={{ background: "#2d4a3e18", border: "1.5px solid #2d6a4f33", borderRadius: 14, padding: "14px 16px", marginTop: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, marginBottom: 6, color: t.text }}><span>Total</span><span>{rp(preview.amount)}</span></div>
-              {members.filter((m) => preview.shares[m.id]).map((m) => (<div key={m.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: t.muted, padding: "2px 0" }}><span>{m.name}</span><span>{rp(preview.shares[m.id])}</span></div>))}
+
+            <div style={{ marginTop: 16, padding: "14px 16px", background: t.subtle, border: `1px solid ${t.border}`, borderRadius: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, marginBottom: 8, color: t.text, fontSize: 15 }}><span>Total</span><span style={num}>{rp(preview.amount)}</span></div>
+              {members.filter((m) => preview.shares[m.id]).map((m) => (
+                <div key={m.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: t.muted, padding: "2px 0", ...num }}>
+                  <span>{m.name}</span><span>{rp(preview.shares[m.id])}</span>
+                </div>
+              ))}
             </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-              <button onClick={onClose} style={secBtn(t)}>Batal</button>
-              <button onClick={save} style={priBtn(t)}>Simpan</button>
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button onClick={onClose} style={btnSecondary(t)}>Batal</button>
+              <button onClick={save} style={btnPrimary(t)}>Simpan</button>
             </div>
           </div>
         )}
@@ -588,123 +665,47 @@ function ManualModal({ members, onClose, onSave, t }) {
     const shares = {}; among.forEach((id) => (shares[id] = per));
     onSave({ id: uid(), desc: desc.trim(), amount: amt, paidBy, shares, category: cat, at: Date.now() }, null);
   };
-  const inp = inputStyle(t);
   return (
     <div style={ov} onClick={onClose}>
-      <div style={modal(t)} onClick={(e) => e.stopPropagation()}>
+      <div style={modalSt(t)} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={mTitle(t)}>Catat pengeluaran</h3>
-          <button onClick={onClose} style={closeBtn(t)}><X size={18} /></button>
+          <h3 style={mTitle(t)}>Pengeluaran baru</h3>
+          <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
         </div>
-        <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Untuk apa? (mis. Bensin)" style={inp} />
-        <input value={amount ? parseInt(String(amount).replace(/\D/g,"")||"0",10).toLocaleString("id-ID") : ""} onChange={(e) => setAmount(e.target.value.replace(/\D/g,""))} placeholder="Jumlah (Rp)" inputMode="numeric" style={{ ...inp, marginTop: 10 }} />
-        <div style={fLabel(t)}>Kategori</div>
+        <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Untuk apa? mis. Bensin" style={inputSt(t)} />
+        <input value={amount ? parseInt(String(amount).replace(/\D/g,"")||"0",10).toLocaleString("id-ID") : ""} onChange={(e) => setAmount(e.target.value.replace(/\D/g,""))} placeholder="Jumlah" inputMode="numeric" style={{ ...inputSt(t), marginTop: 8, ...num }} />
+        <div style={labelSt(t)}>Kategori</div>
         <CatChips value={cat} onChange={setCat} t={t} />
-        <div style={fLabel(t)}>Dibayar oleh</div>
-        <select value={paidBy} onChange={(e) => setPaidBy(e.target.value)} style={inp}>
+        <div style={labelSt(t)}>Dibayar oleh</div>
+        <select value={paidBy} onChange={(e) => setPaidBy(e.target.value)} style={inputSt(t)}>
           {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
-        <div style={fLabel(t)}>Dibagi rata ke</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {members.map((m) => { const on = among.includes(m.id); return (<button key={m.id} onClick={() => toggle(m.id)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "8px 13px", border: `1.5px solid ${on ? m.color : t.border}`, borderRadius: 20, background: on ? m.color : t.input, fontSize: 14, fontWeight: 600, color: on ? "#fff" : t.muted }}>{on && <Check size={13} />}{m.name}</button>); })}
+        <div style={labelSt(t)}>Dibagi ke</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {members.map((m) => { const on = among.includes(m.id); return (<button key={m.id} onClick={() => toggle(m.id)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 12px", border: `1px solid ${on ? m.color : t.border}`, borderRadius: 8, background: on ? m.color + "18" : t.surface, fontSize: 13, fontWeight: 600, color: on ? m.color : t.muted, cursor: "pointer", fontFamily: "inherit" }}>{on && <Check size={12} />}{m.name}</button>); })}
         </div>
-        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-          <button onClick={onClose} style={secBtn(t)}>Batal</button>
-          <button onClick={save} style={priBtn(t)}>Simpan</button>
+        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+          <button onClick={onClose} style={btnSecondary(t)}>Batal</button>
+          <button onClick={save} style={btnPrimary(t)}>Simpan</button>
         </div>
       </div>
     </div>
   );
 }
-
-// ── Trip Selector ─────────────────────────────────────────────────────
-function TripSelector({ currentId, trips, onSelect, onCreate, onDelete, onClose, t }) {
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName]   = useState("");
-  const [confirmDel, setConfirmDel] = useState(null); // trip id pending delete
-  const inp = inputStyle(t);
-  const create = () => {
-    if (!newName.trim()) return;
-    onCreate(newName.trim());
-    setNewName(""); setCreating(false);
-  };
-  const confirmDelete = (id) => {
-    onDelete(id);
-    setConfirmDel(null);
-  };
-  return (
-    <div style={ov} onClick={onClose}>
-      <div style={modal(t)} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <h3 style={mTitle(t)}>Pilih Trip</h3>
-          <button onClick={onClose} style={closeBtn(t)}><X size={18} /></button>
-        </div>
-        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8, maxHeight: "50vh", overflowY: "auto" }}>
-          {trips.map((trip) => {
-            const isCurrent = trip.id === currentId;
-            const isDel = confirmDel === trip.id;
-            return (
-              <div key={trip.id} style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
-                <button onClick={() => onSelect(trip.id)} style={{ flex: 1, display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: isCurrent ? t.accent + "18" : t.card, border: `1.5px solid ${isCurrent ? t.accent : t.border}`, borderRadius: 14, textAlign: "left", cursor: "pointer" }}>
-                  <span style={{ fontWeight: 700, flex: 1, color: isCurrent ? t.accent : t.text }}>{trip.data?.name || trip.id}</span>
-                  {isCurrent && <Check size={16} style={{ color: t.accent }} />}
-                </button>
-                {isDel ? (
-                  <>
-                    <button onClick={() => confirmDelete(trip.id)} title="Yakin hapus?" style={{ padding: "0 12px", background: "#c1121f", color: "#fff", border: "none", borderRadius: 14, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Hapus</button>
-                    <button onClick={() => setConfirmDel(null)} style={{ padding: "0 12px", background: t.card, color: t.muted, border: `1.5px solid ${t.border}`, borderRadius: 14, fontSize: 12, cursor: "pointer" }}>Batal</button>
-                  </>
-                ) : (
-                  trips.length > 1 && (
-                    <button onClick={() => setConfirmDel(trip.id)} title="Hapus trip" style={{ padding: "0 12px", background: t.card, color: "#c1121f", border: `1.5px solid ${t.border}`, borderRadius: 14, display: "flex", alignItems: "center", cursor: "pointer" }}>
-                      <Trash2 size={15} />
-                    </button>
-                  )
-                )}
-              </div>
-            );
-          })}
-        </div>
-        {creating ? (
-          <div style={{ marginTop: 14 }}>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} placeholder="Nama trip baru…" style={{ ...inp, marginBottom: 10 }} autoFocus />
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setCreating(false)} style={secBtn(t)}>Batal</button>
-              <button onClick={create} style={priBtn(t)}>Buat trip</button>
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => setCreating(true)} style={{ ...priBtn(t), width: "100%", marginTop: 14 }}><Plus size={16} /> Trip baru</button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Shared style helpers ──────────────────────────────────────────────
-const ov = { position: "fixed", inset: 0, background: "#2a1f1a99", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50, backdropFilter: "blur(3px)" };
-const modal  = (t) => ({ background: t.bg, width: "100%", maxWidth: 520, borderRadius: "24px 24px 0 0", padding: "22px 18px 28px", animation: "pop .2s ease both" });
-const mTitle = (t) => ({ fontFamily: "Fraunces, serif", fontSize: 24, fontWeight: 600, margin: "0 0 4px", color: t.text });
-const fLabel = (t) => ({ fontSize: 12.5, fontWeight: 700, color: t.accent, margin: "16px 0 8px", letterSpacing: 0.5 });
-const secLabel=(t) => ({ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: t.accent });
-const closeBtn=(t) => ({ border: "none", background: t.settingBg, color: t.muted, width: 34, height: 34, borderRadius: 17, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" });
-const priBtn = (t) => ({ flex: 2, padding: "13px", border: "none", background: t.accent, color: "#fff", borderRadius: 14, fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, cursor: "pointer" });
-const secBtn = (t) => ({ flex: 1, padding: "13px", border: `1.5px solid ${t.border}`, background: t.card, borderRadius: 14, fontWeight: 600, color: t.muted, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer" });
-const inputStyle = (t) => ({ width: "100%", padding: "12px 14px", border: `1.5px solid ${t.border}`, borderRadius: 12, fontSize: 15, background: t.input, color: t.text, display: "block" });
 
 // ── App ───────────────────────────────────────────────────────────────
 export default function App() {
   const [dark, toggleDark] = useDark();
   const t = dark ? T.dark : T.light;
 
-  const [tripId, setTripId]     = useState(() => { try { return localStorage.getItem("splitbill-tripid") || "default-trip"; } catch { return "default-trip"; } });
+  const [tripId, setTripId]     = useState(() => { try { return localStorage.getItem("sb-tripid") || "default-trip"; } catch { return "default-trip"; } });
   const [tripName, setTripName] = useState("Trip Saya");
   const [allTrips, setAllTrips] = useState([]);
   const [members, setMembers]   = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [tab, setTab]           = useState("expenses");
   const [loading, setLoading]   = useState(true);
-  const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
+  const [saveState, setSaveState] = useState("idle");
   const [newName, setNewName]   = useState("");
   const [modal, setModal]       = useState(null);
   const [editAcct, setEditAcct] = useState(null);
@@ -715,84 +716,53 @@ export default function App() {
   const loadTrip = useCallback(async (id, isInit = false) => {
     try {
       const row = await sb.getTrip(id);
-      if (!row) {
-        if (isInit) { setLoading(false); }
-        return;
-      }
+      if (!row) { if (isInit) setLoading(false); return; }
       if (!isInit && row.updated_at === lastUpdatedRef.current) return;
       lastUpdatedRef.current = row.updated_at;
       const data = row.data;
       setTripName(data.name || "Trip Saya");
       setMembers(data.members || []);
       setExpenses(data.expenses || []);
-    } catch { }
-    finally { if (isInit) setLoading(false); }
+    } catch { } finally { if (isInit) setLoading(false); }
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    setMembers([]); setExpenses([]);
+    setLoading(true); setMembers([]); setExpenses([]);
     loadTrip(tripId, true);
     const interval = setInterval(() => loadTrip(tripId, false), POLL_MS);
     return () => clearInterval(interval);
   }, [tripId, loadTrip]);
 
-  useEffect(() => {
-    sb.getTrips().then((rows) => setAllTrips(rows || [])).catch(() => {});
-  }, [tripId]);
+  useEffect(() => { sb.getTrips().then((rows) => setAllTrips(rows || [])).catch(() => {}); }, [tripId]);
 
   const persist = async (m, e, name = tripName) => {
     setSaveState("saving");
     try {
       await sb.saveTrip(tripId, { name, members: m, expenses: e });
       lastUpdatedRef.current = new Date().toISOString();
-      setSaveState("saved");
-      setTimeout(() => setSaveState("idle"), 2000);
-    } catch {
-      setSaveState("error");
-      setTimeout(() => setSaveState("idle"), 3000);
-    }
+      setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800);
+    } catch { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); }
   };
 
-  const switchTrip = (id) => {
-    try { localStorage.setItem("splitbill-tripid", id); } catch {}
-    setTripId(id);
-    setModal(null);
-    setFilterCat("all");
-  };
-
-  const createTrip = async (name) => {
-    const id = "trip-" + Date.now().toString(36);
-    await sb.saveTrip(id, { name, members: [], expenses: [] });
-    switchTrip(id);
-  };
-
+  const switchTrip = (id) => { try { localStorage.setItem("sb-tripid", id); } catch {} setTripId(id); setModal(null); setFilterCat("all"); };
+  const createTrip = async (name) => { const id = "trip-" + Date.now().toString(36); await sb.saveTrip(id, { name, members: [], expenses: [] }); switchTrip(id); };
   const deleteTrip = async (id) => {
     try { await sb.deleteTrip(id); } catch {}
-    // also delete all receipt photos for that trip's expenses
     try {
       const row = await sb.getTrip(id);
       const exps = row?.data?.expenses || [];
       await Promise.all(exps.filter((e) => e.hasReceipt).map((e) => sb.deletePhoto(e.id)));
     } catch {}
-    // refresh trip list
     const rows = await sb.getTrips();
     setAllTrips(rows || []);
-    // if current trip was deleted, switch to another
     if (id === tripId) {
       const next = (rows || []).find((r) => r.id !== id);
       if (next) switchTrip(next.id);
-      else {
-        // no trips left, create a new default
-        await createTrip("Trip Saya");
-      }
+      else await createTrip("Trip Saya");
     }
   };
 
-  const renameTripName = (name) => {
-    setTripName(name);
-    persist(members, expenses, name);
-  };
+  const renameTripName = (name) => { setTripName(name); persist(members, expenses, name); };
 
   const addMember = () => {
     const name = newName.trim(); if (!name) return;
@@ -802,38 +772,25 @@ export default function App() {
   const removeMember = (id) => {
     const next = members.filter((m) => m.id !== id);
     const nextExp = expenses.map((e) => {
-      // If payer is removed, the whole expense is invalid
       if (e.paidBy === id) return null;
-
-      // If removed person had no share, expense stays as-is
       if (!e.shares || e.shares[id] == null) return e;
-
-      // SCANNED expense: remove from items' who arrays + recompute properly
       if (e.items && e.items.length > 0) {
         const newItems = e.items.map((it) => ({ ...it, who: (it.who || []).filter((x) => x !== id) }));
-        // If no items have anyone left, drop the expense
         if (!newItems.some((it) => it.who.length > 0)) return null;
         const charges = e.charges || { tax: 0, service: 0, discount: 0 };
         const { shares, amount } = computeReceiptShares(newItems, charges, next);
         if (!Object.keys(shares).length) return null;
         return { ...e, items: newItems, shares, amount };
       }
-
-      // MANUAL expense: redistribute removed person's share equally among remaining
-      // Keep total amount (payer still paid full amount)
       const remaining = Object.keys(e.shares).filter((x) => x !== id);
       if (!remaining.length) return null;
       const per = e.amount / remaining.length;
-      const shares = {};
-      remaining.forEach((k) => (shares[k] = per));
+      const shares = {}; remaining.forEach((k) => (shares[k] = per));
       return { ...e, shares };
     }).filter(Boolean);
     setMembers(next); setExpenses(nextExp); persist(next, nextExp);
   };
-  const setAccount = (id, account) => {
-    const next = members.map((m) => m.id === id ? { ...m, account } : m);
-    setMembers(next); persist(next, expenses);
-  };
+  const setAccount = (id, account) => { const next = members.map((m) => m.id === id ? { ...m, account } : m); setMembers(next); persist(next, expenses); };
   const addExpense = async (exp, photoDataUrl) => {
     const next = [exp, ...expenses];
     setExpenses(next); persist(members, next); setModal(null);
@@ -851,14 +808,8 @@ export default function App() {
 
   const total   = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses]);
   const { balances, tx } = useMemo(() => settle(members, expenses), [members, expenses]);
-  const catTotals = useMemo(() => {
-    const t2 = {}; expenses.forEach((e) => { t2[e.category||"lainnya"] = (t2[e.category||"lainnya"]||0) + e.amount; });
-    return t2;
-  }, [expenses]);
-  const filteredExpenses = useMemo(() =>
-    filterCat === "all" ? expenses : expenses.filter((e) => (e.category||"lainnya") === filterCat),
-    [expenses, filterCat]
-  );
+  const catTotals = useMemo(() => { const r = {}; expenses.forEach((e) => { r[e.category||"lainnya"] = (r[e.category||"lainnya"]||0) + e.amount; }); return r; }, [expenses]);
+  const filteredExpenses = useMemo(() => filterCat === "all" ? expenses : expenses.filter((e) => (e.category||"lainnya") === filterCat), [expenses, filterCat]);
 
   const nameOf  = (id) => members.find((m) => m.id === id)?.name  || "?";
   const colorOf = (id) => members.find((m) => m.id === id)?.color || "#999";
@@ -866,188 +817,222 @@ export default function App() {
   if (loading)
     return (
       <div style={{ background: t.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center" }}>
-          <Loader2 size={32} style={{ color: t.accent, animation: "spin 1s linear infinite" }} />
-          <div style={{ fontFamily: "Fraunces, serif", color: t.accent, fontSize: 18, marginTop: 12 }}>Memuat…</div>
-        </div>
+        <Loader2 size={26} style={{ color: t.muted, animation: "spin 1s linear infinite" }} />
       </div>
     );
 
   return (
-    <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", background: t.bg, minHeight: "100vh", color: t.text, paddingBottom: 40, maxWidth: 520, margin: "0 auto" }}>
+    <div style={{ fontFamily: "'Inter', 'Plus Jakarta Sans', system-ui, sans-serif", background: t.bg, minHeight: "100vh", color: t.text, paddingBottom: 60, maxWidth: 560, margin: "0 auto" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        @keyframes pop  { from { opacity:0; transform: translateY(10px) } to { opacity:1; transform:none } }
+        @keyframes slideUp { from { opacity:0; transform: translateY(20px) } to { opacity:1; transform:none } }
+        @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
         @keyframes spin { to { transform: rotate(360deg) } }
-        .row { animation: pop .22s ease both; }
-        input:focus, select:focus { outline: 2px solid #c75b3966; }
+        .fadein { animation: fadeIn .2s ease both; }
+        input:focus, select:focus, button:focus-visible { outline: 2px solid ${t.accent}66; outline-offset: 0; }
         button { cursor: pointer; font-family: inherit; }
         ::placeholder { color: ${t.muted}88; }
-        .tap:active { transform: scale(0.984); }
-        select option { background: ${t.input}; color: ${t.text}; }
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-thumb { background: ${t.border}; border-radius: 4px; }
+        .row:active { background: ${t.subtle} }
+        select option { background: ${t.surface}; color: ${t.text}; }
+        ::-webkit-scrollbar { width: 3px; height: 3px; }
+        ::-webkit-scrollbar-thumb { background: ${t.border}; border-radius: 3px; }
+        body { background: ${t.bg}; }
       `}</style>
 
-      {/* Header */}
-      <div style={{ background: t.header, color: "#fff", padding: "28px 20px 22px", borderRadius: "0 0 28px 28px", boxShadow: "0 8px 28px #00000022" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          {/* Trip name + switcher */}
-          <button onClick={() => setModal("trips")} style={{ background: "none", border: "none", color: "#fff", display: "flex", alignItems: "center", gap: 6, padding: 0, opacity: 0.9 }}>
-            <span style={{ fontSize: 11, letterSpacing: 3, fontWeight: 700 }}>TRIP</span>
-            <ChevronDown size={14} />
-          </button>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {saveState === "saving" && <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#ffffff99" }}><Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} />menyimpan</div>}
-            {saveState === "saved"  && <div style={{ fontSize: 11, color: "#ffffff88" }}>✓ tersimpan</div>}
-            {saveState === "error"  && <div style={{ fontSize: 11, color: "#ffbbbb" }}>⚠ gagal simpan</div>}
-            <button onClick={() => setModal("export")} style={{ background: "#ffffff18", border: "none", color: "#fff", borderRadius: 10, padding: "6px 10px", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700 }}>
-              <Share2 size={13} /> WA
-            </button>
-            <button onClick={toggleDark} style={{ background: "#ffffff18", border: "none", color: "#fff", borderRadius: 10, padding: "7px", display: "flex" }}>
-              {dark ? <Sun size={14} /> : <Moon size={14} />}
-            </button>
-          </div>
+      {/* ─── HEADER ─── */}
+      <header style={{ padding: "20px 20px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button onClick={() => setModal("trips")} style={{ ...btnGhost(t), padding: "6px 10px" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{tripName.length > 22 ? tripName.slice(0,20)+"…" : tripName}</span>
+          <ChevronDown size={13} style={{ color: t.muted }} />
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {saveState === "saving" && <span style={{ fontSize: 11.5, color: t.muted, display: "flex", alignItems: "center", gap: 4 }}><Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} /></span>}
+          {saveState === "saved"  && <span className="fadein" style={{ fontSize: 11.5, color: t.success, fontWeight: 500 }}>✓</span>}
+          {saveState === "error"  && <span style={{ fontSize: 11.5, color: t.danger }}>⚠</span>}
+          <button onClick={() => setModal("export")} style={btnX(t)} title="Bagikan ringkasan"><Share2 size={16} /></button>
+          <button onClick={toggleDark} style={btnX(t)} title="Tema">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
         </div>
-        {/* Editable trip name */}
+      </header>
+
+      {/* ─── HERO: Trip name + Total ─── */}
+      <div style={{ padding: "16px 20px 22px" }}>
         <input
           value={tripName}
           onChange={(e) => setTripName(e.target.value)}
           onBlur={(e) => renameTripName(e.target.value.trim() || "Trip Saya")}
           onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
-          style={{ fontFamily: "Fraunces, serif", fontSize: 34, fontWeight: 600, lineHeight: 1.1, color: "#fff", background: "none", border: "none", outline: "none", width: "100%", padding: 0, marginBottom: 14 }}
+          style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.15, color: t.text, background: "none", border: "none", outline: "none", width: "100%", padding: 0, letterSpacing: -0.8, marginBottom: 4, fontFamily: "inherit" }}
         />
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", background: "#ffffff1a", padding: "12px 16px", borderRadius: 14, fontSize: 14 }}>
-          <span style={{ opacity: 0.85 }}>Total pengeluaran</span>
-          <span style={{ fontFamily: "Fraunces, serif", fontSize: 24, fontWeight: 600 }}>{rp(total)}</span>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <span style={{ fontSize: 12, color: t.muted, fontWeight: 500 }}>Total</span>
+          <span style={{ fontSize: 28, fontWeight: 700, color: t.text, letterSpacing: -0.6, ...num }}>{rp(total)}</span>
         </div>
       </div>
 
-      {/* Category filter strip */}
+      {/* ─── Category strip (filter) ─── */}
       {expenses.length > 0 && (
-        <div style={{ padding: "14px 18px 0", display: "flex", gap: 8, overflowX: "auto", scrollbarWidth: "none" }}>
-          <button onClick={() => setFilterCat("all")} style={{ ...catPillStyle(t), ...(filterCat==="all" ? { background: t.text, color: t.bg, borderColor: t.text } : {}) }}>Semua</button>
+        <div style={{ padding: "0 20px 16px", display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none" }}>
+          <button onClick={() => setFilterCat("all")} style={{ ...pillStyle(t), ...(filterCat==="all" ? { background: t.text, color: t.bg, borderColor: t.text } : {}) }}>Semua</button>
           {CATEGORIES.filter((c) => catTotals[c.id]).map((c) => (
             <button key={c.id} onClick={() => setFilterCat(filterCat===c.id ? "all" : c.id)}
-              style={{ ...catPillStyle(t), ...(filterCat===c.id ? { background: c.color, color: "#fff", borderColor: c.color } : { color: c.color, borderColor: c.color + "44" }) }}>
-              <c.icon size={12} />{c.label} · {rp(catTotals[c.id])}
+              style={{ ...pillStyle(t), ...(filterCat===c.id ? { background: c.color + "18", color: c.color, borderColor: c.color + "55" } : {}) }}>
+              <c.icon size={11} strokeWidth={2.2} />{c.label} <span style={{ opacity: 0.7, ...num }}>{rp(catTotals[c.id])}</span>
             </button>
           ))}
         </div>
       )}
 
-      {/* Members */}
-      <div style={{ padding: "18px 18px 0" }}>
-        <div style={secLabel(t)}><Users size={13} /> Anggota</div>
-        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          {members.map((m) => (
-            <div key={m.id} style={{ background: t.card, borderRadius: 14, padding: "12px 14px", boxShadow: t.shadow }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                <span style={{ width: 10, height: 10, borderRadius: 10, background: m.color, flexShrink: 0 }} />
-                <span style={{ fontWeight: 700, flex: 1, color: t.text }}>{m.name}</span>
-                <button onClick={() => setEditAcct(editAcct===m.id ? null : m.id)} style={{ display: "inline-flex", alignItems: "center", gap: 4, border: `1.5px solid ${t.border}`, background: t.settingBg, borderRadius: 18, padding: "5px 10px", fontSize: 11.5, fontWeight: 600, color: t.accent }}>
-                  <CreditCard size={12} /> {m.account ? "ubah" : "rekening"}
+      <div style={{ height: 1, background: t.border, margin: "0 20px" }} />
+
+      {/* ─── Anggota ─── */}
+      <section style={{ padding: "20px 20px 0" }}>
+        <div style={labelSt(t)}>Anggota</div>
+        <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+          {members.length === 0 && (
+            <div style={{ padding: "18px 14px", textAlign: "center", color: t.muted, fontSize: 13.5 }}>Belum ada anggota</div>
+          )}
+          {members.map((m, idx) => (
+            <div key={m.id} style={{ borderTop: idx > 0 ? `1px solid ${t.divider}` : "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
+                <Avatar name={m.name} color={m.color} size={32} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, color: t.text, fontSize: 14.5 }}>{m.name}</div>
+                  {m.account && editAcct !== m.id && <div style={{ fontSize: 12, color: t.muted, marginTop: 1 }}>{m.account}</div>}
+                </div>
+                <button onClick={() => setEditAcct(editAcct===m.id ? null : m.id)} style={{ ...btnGhost(t), padding: "5px 9px", fontSize: 12 }}>
+                  <CreditCard size={11} />{m.account ? "ubah" : "rekening"}
                 </button>
-                <button onClick={() => removeMember(m.id)} style={{ border: "none", background: "none", color: "#c1121f", padding: 4, display: "flex" }}><Trash2 size={14} /></button>
+                <button onClick={() => removeMember(m.id)} style={{ ...btnX(t), width: 30, height: 30, color: t.muted }}><X size={14} /></button>
               </div>
-              {m.account && editAcct !== m.id && <div style={{ fontSize: 12.5, color: t.muted, marginTop: 5, paddingLeft: 20 }}>{m.account}</div>}
               {editAcct === m.id && (
-                <input autoFocus defaultValue={m.account} placeholder="BCA 1234567890 a.n. Nama / GoPay 0812…"
-                  onBlur={(e) => { setAccount(m.id, e.target.value.trim()); setEditAcct(null); }}
-                  onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
-                  style={{ ...inputStyle(t), marginTop: 8, fontSize: 13.5 }} />
+                <div style={{ padding: "0 12px 10px" }}>
+                  <input autoFocus defaultValue={m.account} placeholder="BCA 1234567890 a.n. Nama / GoPay 0812…"
+                    onBlur={(e) => { setAccount(m.id, e.target.value.trim()); setEditAcct(null); }}
+                    onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                    style={{ ...inputSt(t), fontSize: 13, padding: "8px 10px" }} />
+                </div>
               )}
             </div>
           ))}
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addMember()} placeholder="Nama teman…" style={inputStyle(t)} />
-          <button onClick={addMember} style={{ background: t.accent, color: "#fff", border: "none", borderRadius: 12, width: 46, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Plus size={18} /></button>
+        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addMember()} placeholder="Nama teman…" style={{ ...inputSt(t), padding: "10px 12px", fontSize: 14 }} />
+          <button onClick={addMember} style={{ background: t.accent, color: t.accentText, border: "none", borderRadius: 10, width: 42, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><Plus size={17} /></button>
         </div>
+      </section>
+
+      {/* ─── Tabs ─── */}
+      <div style={{ padding: "24px 20px 0", display: "flex", gap: 24, borderBottom: `1px solid ${t.border}`, marginTop: 24 }}>
+        {[["expenses","Pengeluaran",Receipt],["balance","Saldo",Scale]].map(([key, label, Icon]) => (
+          <button key={key} onClick={() => setTab(key)} style={{ background: "none", border: "none", padding: "0 0 10px", display: "flex", alignItems: "center", gap: 6, fontSize: 14.5, fontWeight: 600, color: tab===key ? t.text : t.muted, borderBottom: tab===key ? `2px solid ${t.accent}` : "2px solid transparent", marginBottom: -1, fontFamily: "inherit" }}>
+            <Icon size={14} strokeWidth={2.2} /> {label}
+          </button>
+        ))}
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 8, padding: "18px 18px 0" }}>
-        <button onClick={() => setTab("expenses")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "11px", border: `1.5px solid ${tab==="expenses" ? t.text : t.border}`, background: tab==="expenses" ? t.text : t.card, borderRadius: 14, fontWeight: 600, fontSize: 14, color: tab==="expenses" ? t.bg : t.muted }}><Receipt size={15} /> Pengeluaran</button>
-        <button onClick={() => setTab("balance")}  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "11px", border: `1.5px solid ${tab==="balance"  ? t.text : t.border}`, background: tab==="balance"  ? t.text : t.card, borderRadius: 14, fontWeight: 600, fontSize: 14, color: tab==="balance"  ? t.bg : t.muted }}><Scale size={15} /> Saldo</button>
-      </div>
-
-      {/* Expenses tab */}
+      {/* ─── Expenses tab ─── */}
       {tab === "expenses" && (
-        <div style={{ padding: "14px 18px 0" }}>
+        <section style={{ padding: "16px 20px 0" }}>
           {members.length > 0 && (
-            <div style={{ display: "flex", gap: 10, marginBottom: 4 }}>
-              <button onClick={() => setModal("scan")}   style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "13px", border: "none", background: t.accent, color: "#fff", borderRadius: 14, fontWeight: 700, fontSize: 14.5, boxShadow: `0 4px 14px ${t.accent}44` }}><Camera size={17} /> Scan struk</button>
-              <button onClick={() => setModal("manual")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "13px 18px", border: `1.5px solid ${t.border}`, background: t.card, color: t.text, borderRadius: 14, fontWeight: 600, fontSize: 14.5 }}><Plus size={17} /> Manual</button>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <button onClick={() => setModal("scan")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "12px", border: "none", background: t.accent, color: t.accentText, borderRadius: 11, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}><Camera size={15} /> Scan struk</button>
+              <button onClick={() => setModal("manual")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "12px 16px", border: `1px solid ${t.border}`, background: t.surface, color: t.textSoft, borderRadius: 11, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}><Plus size={15} /> Manual</button>
             </div>
           )}
-          {members.length === 0 && <div style={{ padding: "28px 16px", textAlign: "center", color: t.muted, fontSize: 14, background: t.card, borderRadius: 14, border: `1.5px dashed ${t.border}` }}>Tambah anggota dulu di atas.</div>}
-          {members.length > 0 && filteredExpenses.length === 0 && <div style={{ padding: "28px 16px", textAlign: "center", color: t.muted, fontSize: 14, background: t.card, borderRadius: 14, border: `1.5px dashed ${t.border}` }}>{filterCat==="all" ? "Belum ada pengeluaran." : `Belum ada pengeluaran kategori ${catOf(filterCat).label}.`}</div>}
-          {filteredExpenses.map((e) => {
-            const cat = catOf(e.category);
-            return (
-              <div key={e.id} className="row tap" style={{ display: "flex", gap: 12, alignItems: "center", background: t.card, padding: "12px 12px 12px 12px", borderRadius: 16, marginTop: 10, boxShadow: t.shadow, cursor: "pointer", transition: "transform .1s", position: "relative" }} onClick={() => setOpen(e)}>
-                <div style={{ width: 38, height: 38, borderRadius: 11, background: cat.color + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <cat.icon size={19} style={{ color: cat.color }} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {e.scanned && <Sparkles size={12} style={{ color: "#bc6c25", verticalAlign: -1, marginRight: 3 }} />}{e.desc}
+
+          {members.length === 0 && (
+            <div style={emptyStyle(t)}>Tambah anggota dulu untuk mulai patungan</div>
+          )}
+          {members.length > 0 && filteredExpenses.length === 0 && (
+            <div style={emptyStyle(t)}>{filterCat==="all" ? "Belum ada pengeluaran" : `Tidak ada pengeluaran kategori ${catOf(filterCat).label}`}</div>
+          )}
+
+          {filteredExpenses.length > 0 && (
+            <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+              {filteredExpenses.map((e, idx) => {
+                const cat = catOf(e.category);
+                return (
+                  <div key={e.id} className="row" style={{ display: "flex", gap: 12, alignItems: "center", padding: "13px 14px", borderTop: idx > 0 ? `1px solid ${t.divider}` : "none", cursor: "pointer" }} onClick={() => setOpen(e)}>
+                    <div style={{ width: 32, height: 32, borderRadius: 9, background: cat.color + "15", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <cat.icon size={15} strokeWidth={2.2} style={{ color: cat.color }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14.5, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
+                        {e.scanned && <Sparkles size={11} style={{ color: t.accent, flexShrink: 0 }} />}{e.desc}
+                      </div>
+                      <div style={{ fontSize: 12, color: t.muted, marginTop: 2 }}>
+                        {nameOf(e.paidBy)} · {Object.keys(e.shares||{}).length} orang
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+                      <div style={{ fontWeight: 600, fontSize: 15, color: t.text, ...num }}>{rp(e.amount)}</div>
+                      {e.hasReceipt && <Camera size={11} style={{ color: t.muted }} />}
+                    </div>
+                    <ChevronRight size={15} style={{ color: t.muted, flexShrink: 0 }} />
                   </div>
-                  <div style={{ fontSize: 12.5, color: t.muted, marginTop: 2 }}>
-                    <b style={{ color: colorOf(e.paidBy) }}>{nameOf(e.paidBy)}</b> · {Object.keys(e.shares||{}).length} orang
-                  </div>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                  <div style={{ fontFamily: "Fraunces, serif", fontWeight: 600, fontSize: 16, color: t.text }}>{rp(e.amount)}</div>
-                  {e.hasReceipt ? <Camera size={12} style={{ color: "#bc6c25" }} /> : <ChevronRight size={15} style={{ color: t.muted }} />}
-                </div>
-              </div>
-            );
-          })}
-          {expenses.length > 0 && <div style={{ fontSize: 11.5, color: t.muted, textAlign: "center", marginTop: 14 }}>Tap untuk detail · sync tiap 30 detik · <span style={{ color: t.accent, cursor: "pointer" }} onClick={() => loadTrip(tripId, false)}>refresh</span></div>}
-        </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
       )}
 
-      {/* Balance tab */}
+      {/* ─── Balance tab ─── */}
       {tab === "balance" && (
-        <div style={{ padding: "14px 18px 0" }}>
-          <div style={secLabel(t)}><Wallet size={13} /> Posisi tiap orang</div>
-          {balances.length === 0 && <div style={{ padding: "24px 16px", textAlign: "center", color: t.muted, fontSize: 14 }}>Belum ada data.</div>}
-          {balances.map((b) => (
-            <div key={b.id} className="row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: t.card, padding: "13px 16px", borderRadius: 14, marginTop: 10, boxShadow: t.shadow }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, color: t.text }}>
-                <span style={{ width: 9, height: 9, borderRadius: 9, background: b.color }} />{b.name}
-              </span>
-              <span style={{ fontWeight: 700, color: b.amount > 0 ? "#2d6a4f" : b.amount < 0 ? "#c1121f" : t.muted }}>
-                {b.amount > 0 ? "+" : ""}{rp(b.amount)}
-              </span>
-            </div>
-          ))}
-          <div style={{ ...secLabel(t), marginTop: 22 }}><ArrowRight size={13} /> Yang perlu transfer</div>
-          {tx.length === 0
-            ? <div style={{ padding: "20px 16px", textAlign: "center", color: t.muted, fontSize: 14, background: t.card, borderRadius: 14, marginTop: 10, border: `1.5px dashed ${t.border}` }}>Semua sudah lunas ✓</div>
-            : tx.map((t2, i) => (
-              <div key={i} className="row" style={{ background: t.card, padding: "13px 16px", borderRadius: 14, marginTop: 10, boxShadow: t.shadow }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ color: t2.from.color, fontWeight: 700 }}>{t2.from.name}</span>
-                  <ArrowRight size={14} style={{ color: t.muted }} />
-                  <span style={{ color: t2.to.color, fontWeight: 700 }}>{t2.to.name}</span>
-                  <span style={{ fontWeight: 700, marginLeft: "auto", color: t.text }}>{rp(t2.amount)}</span>
-                </div>
-                <div style={{ fontSize: 12.5, color: t.muted, marginTop: 5 }}>
-                  {t2.to.account ? <>Transfer ke: <b style={{ color: t.text }}>{t2.to.account}</b></> : <span style={{ fontStyle: "italic" }}>Tambah rekening {t2.to.name} di bagian Anggota</span>}
-                </div>
+        <section style={{ padding: "16px 20px 0" }}>
+          <div style={labelSt(t)}>Posisi tiap orang</div>
+          {balances.length === 0
+            ? <div style={emptyStyle(t)}>Belum ada data</div>
+            : (
+              <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+                {balances.map((b, idx) => (
+                  <div key={b.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 14px", borderTop: idx > 0 ? `1px solid ${t.divider}` : "none" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Avatar name={b.name} color={b.color} size={28} />
+                      <span style={{ fontWeight: 600, color: t.text, fontSize: 14.5 }}>{b.name}</span>
+                    </span>
+                    <span style={{ fontWeight: 600, fontSize: 15, color: b.amount > 0 ? t.success : b.amount < 0 ? t.danger : t.muted, ...num }}>
+                      {b.amount > 0 ? "+" : ""}{rp(b.amount)}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))
+            )
+          }
+
+          <div style={labelSt(t)}>Transfer</div>
+          {tx.length === 0
+            ? <div style={{ ...emptyStyle(t), color: t.success }}>Semua sudah lunas ✓</div>
+            : (
+              <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+                {tx.map((tt, i) => (
+                  <div key={i} style={{ padding: "13px 14px", borderTop: i > 0 ? `1px solid ${t.divider}` : "none" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <Avatar name={tt.from.name} color={tt.from.color} size={22} />
+                        <span style={{ fontWeight: 600, fontSize: 14, color: t.text }}>{tt.from.name}</span>
+                      </span>
+                      <ArrowRight size={13} style={{ color: t.muted }} />
+                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <Avatar name={tt.to.name} color={tt.to.color} size={22} />
+                        <span style={{ fontWeight: 600, fontSize: 14, color: t.text }}>{tt.to.name}</span>
+                      </span>
+                      <span style={{ fontWeight: 600, fontSize: 14.5, marginLeft: "auto", color: t.text, ...num }}>{rp(tt.amount)}</span>
+                    </div>
+                    {tt.to.account && <div style={{ fontSize: 12, color: t.muted, marginTop: 6, paddingLeft: 30 }}>{tt.to.account}</div>}
+                    {!tt.to.account && <div style={{ fontSize: 12, color: t.muted, marginTop: 6, paddingLeft: 30, fontStyle: "italic" }}>tambah rekening {tt.to.name}</div>}
+                  </div>
+                ))}
+              </div>
+            )
           }
           {tx.length > 0 && (
-            <button onClick={() => setModal("export")} style={{ ...priBtn(t), width: "100%", marginTop: 16 }}>
-              <Share2 size={15} /> Bagikan ke grup WA
+            <button onClick={() => setModal("export")} style={{ ...btnPrimary(t), width: "100%", marginTop: 16 }}>
+              <Share2 size={14} /> Bagikan ke grup
             </button>
           )}
-        </div>
+        </section>
       )}
 
       {modal === "scan"   && <ScanModal   members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
@@ -1059,4 +1044,5 @@ export default function App() {
   );
 }
 
-const catPillStyle = (t) => ({ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", border: `1.5px solid ${t.border}`, borderRadius: 20, background: t.card, fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", color: t.muted, cursor: "pointer" });
+const pillStyle = (t) => ({ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px", border: `1px solid ${t.border}`, borderRadius: 7, background: t.surface, fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", color: t.textSoft, cursor: "pointer", fontFamily: "inherit" });
+const emptyStyle = (t) => ({ padding: "32px 18px", textAlign: "center", color: t.muted, fontSize: 13.5, background: t.surface, borderRadius: 12, border: `1px dashed ${t.border}` });
