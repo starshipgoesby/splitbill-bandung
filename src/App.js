@@ -1,30 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
-  Plus,
-  Trash2,
-  Users,
-  Receipt,
-  Scale,
-  X,
-  ArrowRight,
-  Wallet,
-  Check,
-  Camera,
-  Sparkles,
-  Loader2,
-  CreditCard,
-  ChevronRight,
-  Share2,
-  Pencil,
-  Moon,
-  Sun,
-  UtensilsCrossed,
-  Car,
-  BedDouble,
-  ShoppingBag,
-  Music,
-  MoreHorizontal,
-  ChevronDown,
+  Plus, Trash2, Users, Receipt, Scale, X, ArrowRight, Wallet, Check, Camera,
+  Sparkles, Loader2, CreditCard, ChevronRight, WifiOff, Share2, Pencil, Moon, Sun,
+  UtensilsCrossed, Car, BedDouble, ShoppingBag, Music, MoreHorizontal, RefreshCw,
+  Settings, ChevronDown,
 } from "lucide-react";
 
 // ── Supabase ──────────────────────────────────────────────────────────
@@ -85,6 +64,9 @@ const sb = {
   async deletePhoto(id) {
     await sbFetch(`receipt_photos?id=eq.${id}`, { method: "DELETE" });
   },
+  async deleteTrip(id) {
+    await sbFetch(`trip_data?id=eq.${id}`, { method: "DELETE" });
+  },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -102,101 +84,34 @@ const CATEGORIES = [
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[5];
 
-// ======================
-// Compress Image Helper
-// ======================
-function compressImage(file, maxDim = 1600, quality = 0.92) {
+// Compress to ~400KB max
+function compressImage(file, maxDim = 900, quality = 0.72) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-
     reader.onload = () => {
       const img = new Image();
-
       img.onload = () => {
-        // Resize seperlunya aja supaya struk tetap jelas
-        const scale = Math.min(
-          1,
-          maxDim / Math.max(img.width, img.height)
-        );
-
-        const width = Math.round(img.width * scale);
-        const height = Math.round(img.height * scale);
-
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
         const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext("2d");
-
-        // Background putih
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, width, height);
-
-        ctx.drawImage(img, 0, 0, width, height);
-
-        let currentQuality = quality;
-
-        // Compress ringan
-        let dataUrl = canvas.toDataURL(
-          "image/jpeg",
-          currentQuality
-        );
-
-        // Maksimal sekitar 1.8MB
-        while (
-          dataUrl.length > 1800000 &&
-          currentQuality > 0.75
-        ) {
-          currentQuality -= 0.03;
-
-          dataUrl = canvas.toDataURL(
-            "image/jpeg",
-            currentQuality
-          );
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        // Try to get under ~400KB
+        let q = quality;
+        let dataUrl = canvas.toDataURL("image/jpeg", q);
+        while (dataUrl.length > 550000 && q > 0.4) {
+          q -= 0.08;
+          dataUrl = canvas.toDataURL("image/jpeg", q);
         }
-
         resolve(dataUrl);
       };
-
       img.onerror = reject;
       img.src = reader.result;
     };
-
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
 }
-
-// ======================
-// Upload Handler
-// ======================
-const handleFileChange = async (e) => {
-  const file = e.target.files[0];
-
-  if (!file) return;
-
-  try {
-    // Compress image
-    const compressedImage = await compressImage(file);
-
-    // Simpan ke state
-    setReceiptImage(compressedImage);
-
-    console.log("Image compressed successfully");
-
-  } catch (err) {
-    console.error("Compress error:", err);
-  }
-};
-
-// ======================
-// Input Upload
-// ======================
-<input
-  type="file"
-  accept="image/*"
-  onChange={handleFileChange}
-/>
 
 function equalSharesFrom(e) {
   const s = {}, list = e.splitAmong || [];
@@ -371,12 +286,24 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
   const dateStr = new Date(expense.at || Date.now()).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
   const saveEdit = () => {
-    const amt = parseInt(String(editAmt).replace(/\D/g, ""), 10);
-    if (!editDesc.trim() || !amt) return;
-    const among = Object.keys(expense.shares || {});
-    const per = amt / (among.length || 1);
-    const shares = {}; among.forEach((id) => (shares[id] = per));
-    onUpdate({ ...expense, desc: editDesc.trim(), amount: amt, paidBy: editPaidBy, shares, category: editCat });
+    let shares, amount;
+    if (expense.items && expense.items.length > 0) {
+      // Scanned expense: preserve per-item allocation, recompute from items
+      const charges = expense.charges || { tax: 0, service: 0, discount: 0 };
+      const result = computeReceiptShares(expense.items, charges, members);
+      shares = result.shares;
+      amount = result.amount;
+    } else {
+      // Manual expense: equal split
+      const amt = parseInt(String(editAmt).replace(/\D/g, ""), 10);
+      if (!editDesc.trim() || !amt) return;
+      const among = Object.keys(expense.shares || {});
+      const per = amt / (among.length || 1);
+      shares = {}; among.forEach((id) => (shares[id] = per));
+      amount = amt;
+    }
+    if (!editDesc.trim() || amount <= 0) return;
+    onUpdate({ ...expense, desc: editDesc.trim(), amount, paidBy: editPaidBy, shares, category: editCat });
     setEditing(false);
   };
 
@@ -412,8 +339,11 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
             <div style={{ marginTop: 12 }}>
               <div style={fLabel(t)}>Kategori</div>
               <CatChips value={editCat} onChange={setEditCat} t={t} />
-              <div style={fLabel(t)}>Jumlah</div>
-              <input value={parseInt(String(editAmt).replace(/\D/g,"")||"0",10).toLocaleString("id-ID")} onChange={(e) => setEditAmt(e.target.value.replace(/\D/g,""))} inputMode="numeric" style={inp} />
+              {!expense.scanned && (<>
+                <div style={fLabel(t)}>Jumlah</div>
+                <input value={parseInt(String(editAmt).replace(/\D/g,"")||"0",10).toLocaleString("id-ID")} onChange={(e) => setEditAmt(e.target.value.replace(/\D/g,""))} inputMode="numeric" style={inp} />
+              </>)}
+              {expense.scanned && (<div style={{ marginTop: 14, padding: "10px 12px", background: t.accent + "15", borderRadius: 10, fontSize: 12.5, color: t.muted, lineHeight: 1.5 }}>💡 Jumlah otomatis dihitung dari item struk. Untuk ubah jumlah, edit per-item dengan scan ulang.</div>)}
               <div style={fLabel(t)}>Dibayar oleh</div>
               <select value={editPaidBy} onChange={(e) => setEditPaidBy(e.target.value)} style={inp}>
                 {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -446,7 +376,7 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
 
               {expense.items?.length > 0 && (
                 <>
-                  <div style={{ ...secLabel(t), marginTop: 20 }}><Receipt size={13} /> Rincian item</div>
+                  <div style={{ ...secLabel(t), marginTop: 20 }}><Receipt size={13} /> Rincian item <span style={{ textTransform: "none", fontSize: 11, color: t.muted, fontWeight: 500, letterSpacing: 0 }}>· tap nama untuk ubah</span></div>
                   {expense.items.map((it, idx) => (
                     <div key={idx} style={{ background: t.card, borderRadius: 12, padding: "11px 14px", marginTop: 8 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
@@ -454,7 +384,21 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
                         <span style={{ fontWeight: 600, fontSize: 14.5, whiteSpace: "nowrap", color: t.text }}>{rp(it.price)}</span>
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
-                        {(it.who || []).map((id) => (<span key={id} style={{ padding: "3px 9px", borderRadius: 14, fontSize: 11.5, fontWeight: 700, background: colorOf(id) + "22", color: colorOf(id) }}>{nameOf(id)}</span>))}
+                        {members.map((m) => {
+                          const on = (it.who || []).includes(m.id);
+                          return (
+                            <button key={m.id} onClick={() => {
+                              const newItems = expense.items.map((x, i) => i !== idx ? x : { ...x, who: on ? (x.who || []).filter((y) => y !== m.id) : [...(x.who || []), m.id] });
+                              const charges = expense.charges || { tax: 0, service: 0, discount: 0 };
+                              const { shares, amount } = computeReceiptShares(newItems, charges, members);
+                              if (Object.keys(shares).length === 0) return;
+                              onUpdate({ ...expense, items: newItems, shares, amount });
+                            }}
+                            style={{ padding: "4px 10px", borderRadius: 14, fontSize: 11.5, fontWeight: 700, border: `1.5px solid ${on ? m.color : t.border}`, background: on ? m.color + "22" : t.input, color: on ? m.color : t.muted + "99", cursor: "pointer" }}>
+                              {m.name}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
@@ -649,26 +593,52 @@ function ManualModal({ members, onClose, onSave, t }) {
 }
 
 // ── Trip Selector ─────────────────────────────────────────────────────
-function TripSelector({ currentId, trips, onSelect, onCreate, onRename, t }) {
+function TripSelector({ currentId, trips, onSelect, onCreate, onDelete, onClose, t }) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName]   = useState("");
+  const [confirmDel, setConfirmDel] = useState(null); // trip id pending delete
   const inp = inputStyle(t);
   const create = () => {
     if (!newName.trim()) return;
     onCreate(newName.trim());
     setNewName(""); setCreating(false);
   };
+  const confirmDelete = (id) => {
+    onDelete(id);
+    setConfirmDel(null);
+  };
   return (
-    <div style={ov} onClick={() => {}}>
+    <div style={ov} onClick={onClose}>
       <div style={modal(t)} onClick={(e) => e.stopPropagation()}>
-        <h3 style={mTitle(t)}>Pilih Trip</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <h3 style={mTitle(t)}>Pilih Trip</h3>
+          <button onClick={onClose} style={closeBtn(t)}><X size={18} /></button>
+        </div>
         <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8, maxHeight: "50vh", overflowY: "auto" }}>
-          {trips.map((trip) => (
-            <button key={trip.id} onClick={() => onSelect(trip.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: trip.id === currentId ? t.accent + "18" : t.card, border: `1.5px solid ${trip.id === currentId ? t.accent : t.border}`, borderRadius: 14, textAlign: "left", cursor: "pointer" }}>
-              <span style={{ fontWeight: 700, flex: 1, color: trip.id === currentId ? t.accent : t.text }}>{trip.data?.name || trip.id}</span>
-              {trip.id === currentId && <Check size={16} style={{ color: t.accent }} />}
-            </button>
-          ))}
+          {trips.map((trip) => {
+            const isCurrent = trip.id === currentId;
+            const isDel = confirmDel === trip.id;
+            return (
+              <div key={trip.id} style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
+                <button onClick={() => onSelect(trip.id)} style={{ flex: 1, display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: isCurrent ? t.accent + "18" : t.card, border: `1.5px solid ${isCurrent ? t.accent : t.border}`, borderRadius: 14, textAlign: "left", cursor: "pointer" }}>
+                  <span style={{ fontWeight: 700, flex: 1, color: isCurrent ? t.accent : t.text }}>{trip.data?.name || trip.id}</span>
+                  {isCurrent && <Check size={16} style={{ color: t.accent }} />}
+                </button>
+                {isDel ? (
+                  <>
+                    <button onClick={() => confirmDelete(trip.id)} title="Yakin hapus?" style={{ padding: "0 12px", background: "#c1121f", color: "#fff", border: "none", borderRadius: 14, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Hapus</button>
+                    <button onClick={() => setConfirmDel(null)} style={{ padding: "0 12px", background: t.card, color: t.muted, border: `1.5px solid ${t.border}`, borderRadius: 14, fontSize: 12, cursor: "pointer" }}>Batal</button>
+                  </>
+                ) : (
+                  trips.length > 1 && (
+                    <button onClick={() => setConfirmDel(trip.id)} title="Hapus trip" style={{ padding: "0 12px", background: t.card, color: "#c1121f", border: `1.5px solid ${t.border}`, borderRadius: 14, display: "flex", alignItems: "center", cursor: "pointer" }}>
+                      <Trash2 size={15} />
+                    </button>
+                  )
+                )}
+              </div>
+            );
+          })}
         </div>
         {creating ? (
           <div style={{ marginTop: 14 }}>
@@ -770,6 +740,28 @@ export default function App() {
     const id = "trip-" + Date.now().toString(36);
     await sb.saveTrip(id, { name, members: [], expenses: [] });
     switchTrip(id);
+  };
+
+  const deleteTrip = async (id) => {
+    try { await sb.deleteTrip(id); } catch {}
+    // also delete all receipt photos for that trip's expenses
+    try {
+      const row = await sb.getTrip(id);
+      const exps = row?.data?.expenses || [];
+      await Promise.all(exps.filter((e) => e.hasReceipt).map((e) => sb.deletePhoto(e.id)));
+    } catch {}
+    // refresh trip list
+    const rows = await sb.getTrips();
+    setAllTrips(rows || []);
+    // if current trip was deleted, switch to another
+    if (id === tripId) {
+      const next = (rows || []).find((r) => r.id !== id);
+      if (next) switchTrip(next.id);
+      else {
+        // no trips left, create a new default
+        await createTrip("Trip Saya");
+      }
+    }
   };
 
   const renameTripName = (name) => {
@@ -964,7 +956,6 @@ export default function App() {
                   <div style={{ fontFamily: "Fraunces, serif", fontWeight: 600, fontSize: 16, color: t.text }}>{rp(e.amount)}</div>
                   {e.hasReceipt ? <Camera size={12} style={{ color: "#bc6c25" }} /> : <ChevronRight size={15} style={{ color: t.muted }} />}
                 </div>
-                <button onClick={(ev) => { ev.stopPropagation(); removeExpense(e.id); }} style={{ position: "absolute", top: 6, right: 6, border: "none", background: "none", color: "#c1121f66", padding: 5, display: "flex", borderRadius: 8 }}><Trash2 size={13} /></button>
               </div>
             );
           })}
@@ -1015,7 +1006,7 @@ export default function App() {
       {modal === "scan"   && <ScanModal   members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
       {modal === "manual" && <ManualModal members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
       {modal === "export" && <ExportModal tripName={tripName} members={members} expenses={expenses} tx={tx} onClose={() => setModal(null)} t={t} />}
-      {modal === "trips"  && <TripSelector currentId={tripId} trips={allTrips} onSelect={switchTrip} onCreate={createTrip} onRename={renameTripName} t={t} />}
+      {modal === "trips"  && <TripSelector currentId={tripId} trips={allTrips} onSelect={switchTrip} onCreate={createTrip} onDelete={deleteTrip} onClose={() => setModal(null)} t={t} />}
       {openExpense && <DetailModal expense={openExpense} members={members} onClose={() => setOpen(null)} onUpdate={updateExpense} onDelete={(id) => { removeExpense(id); setOpen(null); }} t={t} />}
     </div>
   );
