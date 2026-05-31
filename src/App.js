@@ -1060,7 +1060,6 @@ function StatsModal({ tripName, members, expenses, onClose, t }) {
   };
 
   const nameOf = (id) => members.find((m) => m.id === id)?.name || "?";
-  const colorOf = (id) => members.find((m) => m.id === id)?.color || "#999";
 
   // Max for scaling
   const maxCat = Math.max(...Object.values(stats.byCategory), 1);
@@ -1439,7 +1438,7 @@ export default function App() {
         }
       } catch {}
     }
-  }, [loading, members.length, myId, tripId]);
+  }, [loading, members.length, myId, tripId, modal]);
 
   const persist = async (m, e, name = tripName, logEntry = null) => {
     setSaveState("saving");
