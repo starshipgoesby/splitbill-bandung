@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
-  Plus, Trash2, Users, Receipt, Scale, X, ArrowRight, Wallet, Check, Camera,
+  Plus, Trash2, Receipt, Scale, X, ArrowRight, Check, Camera,
   Sparkles, Loader2, CreditCard, ChevronRight, Share2, Pencil, Moon, Sun,
   UtensilsCrossed, Car, BedDouble, ShoppingBag, Music, MoreHorizontal, ChevronDown,
 } from "lucide-react";
@@ -812,7 +812,6 @@ export default function App() {
   const filteredExpenses = useMemo(() => filterCat === "all" ? expenses : expenses.filter((e) => (e.category||"lainnya") === filterCat), [expenses, filterCat]);
 
   const nameOf  = (id) => members.find((m) => m.id === id)?.name  || "?";
-  const colorOf = (id) => members.find((m) => m.id === id)?.color || "#999";
 
   if (loading)
     return (
