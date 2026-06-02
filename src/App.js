@@ -4,6 +4,7 @@ import {
   Sparkles, Loader2, CreditCard, ChevronRight, Share2, Pencil, Moon, Sun,
   UtensilsCrossed, Car, BedDouble, ShoppingBag, Music, MoreHorizontal, ChevronDown,
   Download, Link2, Phone, History, BarChart3, Trophy, Target, Smartphone,
+  MapPin, Calendar, CheckCircle2, AlertCircle, Circle, Sunset, Church, Coffee,
 } from "lucide-react";
 
 // ── Supabase ──────────────────────────────────────────────────────────
@@ -94,6 +95,40 @@ const CATEGORIES = [
   { id: "lainnya",    label: "Lainnya",    icon: MoreHorizontal,  color: "#71717a" },
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[5];
+
+// ── Itinerary helpers ────────────────────────────────────────────────
+const ITINERARY_CATS = [
+  { id: "transport",     label: "Transport",     icon: Car,             color: "#2563eb" },
+  { id: "food",          label: "Makan",         icon: UtensilsCrossed, color: "#ea580c" },
+  { id: "accommodation", label: "Penginapan",    icon: BedDouble,       color: "#16a34a" },
+  { id: "leisure",       label: "Leisure",       icon: Sunset,          color: "#db2777" },
+  { id: "entertainment", label: "Hiburan",       icon: Music,           color: "#9333ea" },
+  { id: "religion",      label: "Wisata Religi", icon: Church,          color: "#0d9488" },
+  { id: "coffee",        label: "Ngopi",         icon: Coffee,          color: "#92400e" },
+  { id: "itn_other",     label: "Lainnya",       icon: MoreHorizontal,  color: "#71717a" },
+];
+const itnCatOf = (id) => ITINERARY_CATS.find(c => c.id === id) || ITINERARY_CATS[7];
+
+const ITN_DAY_NAMES = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+const ITN_MONTHS    = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+const itnFmt = (t) => (t || "--:--").replace(":", ".");
+const itnToMin = (t) => { if (!t) return 0; const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const itnDur = (s, e) => {
+  if (!s || !e) return "";
+  let d = itnToMin(e) - itnToMin(s); if (d < 0) d += 1440;
+  const h = Math.floor(d / 60), m = d % 60;
+  return h === 0 ? `${m}m` : m === 0 ? `${h}j` : `${h}j ${m}m`;
+};
+const itnFormatDate = (ds) => {
+  if (!ds) return "";
+  const d = new Date(ds + "T00:00:00");
+  return `${ITN_DAY_NAMES[d.getDay()]}, ${d.getDate()} ${ITN_MONTHS[d.getMonth()]}`;
+};
+const itnAddDays = (ds, n) => {
+  const d = new Date(ds + "T00:00:00"); d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const itnToday = () => new Date().toISOString().slice(0, 10);
 
 function readAsDataURL(file) {
   return new Promise((resolve, reject) => {
@@ -948,12 +983,12 @@ Periksa hasil sebelum balas: pastikan jumlah items.price + tax + service - disco
 }
 
 // ── Manual Modal ──────────────────────────────────────────────────────
-function ManualModal({ members, onClose, onSave, t }) {
-  const [desc, setDesc]     = useState("");
+function ManualModal({ members, onClose, onSave, prefill, t }) {
+  const [desc, setDesc]     = useState(prefill?.desc || "");
   const [amount, setAmount] = useState("");
   const [paidBy, setPaidBy] = useState(members[0]?.id || "");
   const [among, setAmong]   = useState(members.map((m) => m.id));
-  const [cat, setCat]       = useState("lainnya");
+  const [cat, setCat]       = useState(prefill?.category || "lainnya");
   const toggle = (id) => setAmong((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
   const save = () => {
     const amt = parseInt(String(amount).replace(/\D/g,""),10);
@@ -1328,6 +1363,346 @@ function IdentityPicker({ members, currentId, onSelect, onSkip, t }) {
   );
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// ITINERARY COMPONENTS
+// ═══════════════════════════════════════════════════════════════
+
+// ── Itinerary Cat Chips ───────────────────────────────────────
+function ItnCatChips({ value, onChange, t }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {ITINERARY_CATS.map(c => {
+        const on = value === c.id;
+        return <button key={c.id} onClick={() => onChange(c.id)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 11px", borderRadius: 8, fontSize: 12.5, fontWeight: 500, border: `1px solid ${on ? c.color : t.border}`, background: on ? c.color + "18" : t.surface, color: on ? c.color : t.textSoft, cursor: "pointer", fontFamily: "inherit" }}><c.icon size={12} strokeWidth={2} />{c.label}</button>;
+      })}
+    </div>
+  );
+}
+
+// ── Import from spreadsheet ───────────────────────────────────
+function ImportModal({ onImport, onClose, t }) {
+  const [text, setText] = useState("");
+  const [err, setErr]   = useState("");
+  const handle = () => {
+    if (!text.trim()) return;
+    setErr("");
+    try {
+      const lines = text.trim().split("\n").filter(l => l.trim());
+      const rows  = lines.map(l => l.split("\t").map(c => c.trim()));
+      const dataRows = rows.filter(r => {
+        const f = (r[0]||"").toLowerCase();
+        return !["day","hari","tanggal","aktivitas"].includes(f) && r.length >= 4;
+      });
+      let currentDate = itnToday();
+      const items = [];
+      dataRows.forEach(r => {
+        const dateCol = r[1] || r[0] || "";
+        const dm = dateCol.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+        if (dm) {
+          const [,d,m,y] = dm;
+          const yr = y.length===2?"20"+y:y;
+          currentDate = `${yr}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+        }
+        const timeStart = (r[2]||"").slice(0,5);
+        const timeEnd   = (r[3]||"").slice(0,5);
+        const activity  = r[5] || r[4] || "";
+        const location  = r[6] || "";
+        const catRaw    = (r[8]||r[7]||"").toLowerCase();
+        if (!activity) return;
+        let catId = "itn_other";
+        if (/food|makan|sarapan|lunch|dinner|jurit/i.test(catRaw + activity)) catId = "food";
+        if (/transport|otw|perjalanan|pulang/i.test(catRaw + activity)) catId = "transport";
+        if (/accommod|penginapan|check.in|check.out|bobo/i.test(catRaw + activity)) catId = "accommodation";
+        if (/leisure|rest|prepare|santai/i.test(catRaw + activity)) catId = "leisure";
+        if (/entertain|tennis|golf/i.test(catRaw + activity)) catId = "entertainment";
+        if (/religi|sholat|masjid|gereja/i.test(catRaw + activity)) catId = "religion";
+        if (/coffee|kopi|ngopi|cafe/i.test(catRaw + activity)) catId = "coffee";
+        items.push({ id: uid(), date: currentDate, timeStart, timeEnd, activity, location, category: catId, status: "upcoming", notes: "" });
+      });
+      if (!items.length) { setErr("Tidak ada baris yang terbaca. Pastikan copy dari spreadsheet (tab-separated)."); return; }
+      onImport(items);
+    } catch(e) { setErr("Gagal: " + e.message); }
+  };
+  return (
+    <div style={ov} onClick={onClose}>
+      <div style={modalSt(t)} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={mTitle(t)}>Import Spreadsheet</h3>
+          <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
+        </div>
+        <p style={{ fontSize: 13.5, color: t.muted, margin: "0 0 10px", lineHeight: 1.6 }}>
+          Buka Google Sheets → pilih semua baris data → Ctrl+C → paste di sini.
+        </p>
+        <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Paste dari Google Sheets / Excel..." style={{ ...inputSt(t), height: 140, resize: "vertical", fontFamily: "monospace", fontSize: 12 }} autoFocus />
+        {err && <div style={{ marginTop: 8, padding: "8px 12px", background: t.danger + "18", border: `1px solid ${t.danger}44`, borderRadius: 8, fontSize: 12.5, color: t.danger }}>{err}</div>}
+        <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+          <button onClick={onClose} style={btnSecondary(t)}>Batal</button>
+          <button onClick={handle} style={btnPrimary(t)}><Download size={15} /> Import</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Activity Form Modal ───────────────────────────────────────
+function ActivityFormModal({ item, dates, defaultDate, onSave, onClose, t }) {
+  const [form, setForm] = useState({
+    date:      item?.date      || defaultDate || dates[0],
+    timeStart: item?.timeStart || "09:00",
+    timeEnd:   item?.timeEnd   || "10:00",
+    activity:  item?.activity  || "",
+    location:  item?.location  || "",
+    category:  item?.category  || "itn_other",
+    notes:     item?.notes     || "",
+  });
+  const s = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const save = () => {
+    if (!form.activity.trim()) return;
+    onSave({ id: item?.id || uid(), status: item?.status || "upcoming", ...form, activity: form.activity.trim(), location: form.location.trim() });
+  };
+  return (
+    <div style={ov} onClick={onClose}>
+      <div style={{ ...modalSt(t), maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={mTitle(t)}>{item ? "Edit aktivitas" : "Tambah aktivitas"}</h3>
+          <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
+        </div>
+        <input value={form.activity} onChange={e => s("activity", e.target.value)} placeholder="Nama aktivitas" style={{ ...inputSt(t), fontSize: 16, fontWeight: 600 }} autoFocus />
+        <div style={labelSt(t)}>Tanggal</div>
+        <select value={form.date} onChange={e => s("date", e.target.value)} style={inputSt(t)}>
+          {dates.map(d => <option key={d} value={d}>{itnFormatDate(d)}</option>)}
+        </select>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 16 }}>
+          <div><div style={labelSt(t)}>Mulai</div><input type="time" value={form.timeStart} onChange={e => s("timeStart", e.target.value)} style={inputSt(t)} /></div>
+          <div><div style={labelSt(t)}>Selesai</div><input type="time" value={form.timeEnd} onChange={e => s("timeEnd", e.target.value)} style={inputSt(t)} /></div>
+        </div>
+        <div style={labelSt(t)}>Lokasi</div>
+        <input value={form.location} onChange={e => s("location", e.target.value)} placeholder="Nama tempat (opsional)" style={inputSt(t)} />
+        <div style={labelSt(t)}>Kategori</div>
+        <ItnCatChips value={form.category} onChange={v => s("category", v)} t={t} />
+        <div style={labelSt(t)}>Catatan</div>
+        <textarea value={form.notes} onChange={e => s("notes", e.target.value)} placeholder="Opsional..." style={{ ...inputSt(t), height: 60, resize: "none" }} />
+        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+          <button onClick={onClose} style={btnSecondary(t)}>Batal</button>
+          <button onClick={save} style={btnPrimary(t)}><Check size={15} /> Simpan</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Timeline Card ─────────────────────────────────────────────
+function TimelineCard({ item, isLast, onEdit, onDelete, onToggleStatus, onAddExpense, t }) {
+  const [open, setOpen] = useState(false);
+  const cat = itnCatOf(item.category);
+  const dur = itnDur(item.timeStart, item.timeEnd);
+  const statusColor = item.status === "done" ? t.success : item.status === "current" ? t.warn : t.border;
+  return (
+    <div style={{ display: "flex", position: "relative" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 26, flexShrink: 0 }}>
+        <button onClick={() => onToggleStatus(item.id)} style={{ width: 22, height: 22, borderRadius: 22, border: `2px solid ${statusColor}`, background: item.status === "done" ? statusColor : t.bg, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, zIndex: 1 }}>
+          {item.status === "done" && <Check size={11} color="#fff" strokeWidth={3} />}
+          {item.status === "current" && <div style={{ width: 7, height: 7, borderRadius: 7, background: t.warn }} />}
+        </button>
+        {!isLast && <div style={{ flex: 1, width: 2, background: t.border, margin: "3px 0", minHeight: 16 }} />}
+      </div>
+      <div style={{ flex: 1, marginLeft: 10, marginBottom: isLast ? 0 : 10 }}>
+        <div style={{ background: t.surface, border: `1px solid ${item.status === "current" ? t.warn + "55" : t.border}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", boxShadow: item.status === "current" ? `0 0 0 3px ${t.warn}22` : "none" }} onClick={() => setOpen(o => !o)}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                <div style={{ width: 6, height: 6, borderRadius: 6, background: cat.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 10.5, color: cat.color, fontWeight: 600 }}>{cat.label}</span>
+              </div>
+              <div style={{ fontSize: 14.5, fontWeight: 600, color: t.text }}>{item.activity}</div>
+              {item.location && <div style={{ fontSize: 11.5, color: t.muted, marginTop: 3, display: "flex", alignItems: "center", gap: 3 }}><MapPin size={10} />{item.location}</div>}
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{itnFmt(item.timeStart)}</div>
+              {item.timeEnd && <div style={{ fontSize: 11, color: t.muted }}>–{itnFmt(item.timeEnd)}</div>}
+              {dur && <div style={{ fontSize: 10.5, color: t.muted }}>{dur}</div>}
+            </div>
+          </div>
+          {open && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${t.divider}` }}>
+              {item.notes && <p style={{ fontSize: 12.5, color: t.textSoft, margin: "0 0 10px", lineHeight: 1.5 }}>{item.notes}</p>}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button onClick={e => { e.stopPropagation(); onEdit(item); }} style={{ ...btnSecondary(t), flex: "none", padding: "6px 10px", fontSize: 12 }}><Pencil size={11} /> Edit</button>
+                <button onClick={e => { e.stopPropagation(); onAddExpense(item); }} style={{ ...btnPrimary(t), flex: "none", padding: "6px 10px", fontSize: 12 }}><Plus size={11} /> Catat biaya</button>
+                <button onClick={e => { e.stopPropagation(); onDelete(item.id); }} style={{ ...btnSecondary(t), flex: "none", padding: "6px 10px", fontSize: 12, color: t.danger, borderColor: t.danger + "44" }}><Trash2 size={11} /></button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Itinerary Settings Modal ──────────────────────────────────
+function ItnSettingsModal({ itn, onSave, onClose, t }) {
+  const [startDate, setStartDate] = useState(itn.startDate || itnToday());
+  const [numDays, setNumDays]     = useState(itn.numDays || 4);
+  const save = () => { onSave(startDate, numDays); onClose(); };
+  return (
+    <div style={ov} onClick={onClose}>
+      <div style={modalSt(t)} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={mTitle(t)}>Pengaturan itinerary</h3>
+          <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
+        </div>
+        <div style={labelSt(t)}>Tanggal mulai trip</div>
+        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputSt(t)} />
+        <div style={labelSt(t)}>Jumlah hari</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 4 }}>
+          <button onClick={() => setNumDays(d => Math.max(1, d - 1))} style={{ ...btnSecondary(t), flex: "none", width: 40, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+          <span style={{ fontSize: 22, fontWeight: 700, color: t.text, minWidth: 28, textAlign: "center" }}>{numDays}</span>
+          <button onClick={() => setNumDays(d => Math.min(14, d + 1))} style={{ ...btnSecondary(t), flex: "none", width: 40, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+          <span style={{ color: t.muted, fontSize: 13 }}>hari</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+          <button onClick={onClose} style={btnSecondary(t)}>Batal</button>
+          <button onClick={save} style={btnPrimary(t)}>Simpan</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Itinerary Tab ─────────────────────────────────────────────
+function ItineraryTab({ itn, onSaveActivity, onDeleteActivity, onToggleStatus, onUpdateItn, onAddExpenseFromActivity, members, t }) {
+  const [itnModal, setItnModal] = useState(null); // "add"|"edit"|"import"|"settings"
+  const [editItem, setEditItem] = useState(null);
+  const [addDate, setAddDate]   = useState(null);
+  const [activeDay, setActiveDay] = useState(0);
+
+  const dates = useMemo(() =>
+    Array.from({ length: itn.numDays || 4 }, (_, i) => itnAddDays(itn.startDate || itnToday(), i)),
+    [itn.startDate, itn.numDays]
+  );
+
+  const itemsByDate = useMemo(() => {
+    const m = {}; dates.forEach(d => (m[d] = []));
+    (itn.activities || []).forEach(item => {
+      if (m[item.date]) m[item.date].push(item);
+      else if (m[dates[0]]) m[dates[0]].push(item); // fallback to day 1
+    });
+    return m;
+  }, [itn.activities, dates]);
+
+  const doneCount  = (itn.activities || []).filter(i => i.status === "done").length;
+  const totalCount = (itn.activities || []).length;
+  const pct = totalCount > 0 ? Math.round(doneCount / totalCount * 100) : 0;
+
+  const handleImport = (items) => {
+    items.forEach(onSaveActivity);
+    setItnModal(null);
+  };
+
+  return (
+    <div>
+      {/* Itinerary header */}
+      <div style={{ padding: "16px 20px 0" }}>
+        {/* Date range + settings */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div style={{ fontSize: 12, color: t.muted }}>
+            {itnFormatDate(itn.startDate || itnToday())} — {itnFormatDate(itnAddDays(itn.startDate || itnToday(), (itn.numDays || 4) - 1))} · {itn.numDays || 4} hari
+          </div>
+          <button onClick={() => setItnModal("settings")} style={{ ...btnGhost(t), padding: "5px 9px", fontSize: 12 }}>
+            <Calendar size={12} /> Atur
+          </button>
+        </div>
+
+        {/* Progress bar */}
+        {totalCount > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: t.muted, marginBottom: 4 }}>
+              <span>Progress trip</span>
+              <span>{doneCount}/{totalCount} aktivitas ({pct}%)</span>
+            </div>
+            <div style={{ height: 4, background: t.border, borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${pct}%`, background: t.accent, transition: "width .4s" }} />
+            </div>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <button onClick={() => { setEditItem(null); setAddDate(dates[activeDay] || dates[0]); setItnModal("add"); }} style={{ ...btnPrimary(t), flex: 1, padding: "10px 14px", fontSize: 13.5 }}><Plus size={14} /> Tambah</button>
+          <button onClick={() => setItnModal("import")} style={{ ...btnSecondary(t), padding: "10px 14px", fontSize: 13.5 }}><Download size={14} /> Import</button>
+        </div>
+
+        {/* Day tabs */}
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2 }}>
+          {dates.map((date, idx) => {
+            const active = activeDay === idx;
+            const dayItems = itemsByDate[date] || [];
+            const dayDone  = dayItems.filter(i => i.status === "done").length;
+            return (
+              <button key={date} onClick={() => setActiveDay(idx)} style={{ flexShrink: 0, padding: "7px 12px", border: `1px solid ${active ? t.accent : t.border}`, borderRadius: 10, background: active ? t.accent : t.surface, color: active ? t.accentText : t.textSoft, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+                <span>Hari {idx + 1}</span>
+                <span style={{ fontSize: 10, opacity: 0.8 }}>{itnFormatDate(date).split(",")[0]}</span>
+                {dayItems.length > 0 && (
+                  <div style={{ display: "flex", gap: 2, marginTop: 2 }}>
+                    {dayItems.slice(0, 5).map((_, i) => (
+                      <div key={i} style={{ width: 4, height: 4, borderRadius: 4, background: i < dayDone ? (active ? "#fff" : t.success) : (active ? "#ffffff55" : t.border) }} />
+                    ))}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ height: 1, background: t.border, margin: "14px 0 0" }} />
+
+      {/* Day content */}
+      <div style={{ padding: "16px 20px 0" }}>
+        {dates.map((date, idx) => {
+          if (idx !== activeDay) return null;
+          const sorted = [...(itemsByDate[date] || [])].sort((a, b) => itnToMin(a.timeStart) - itnToMin(b.timeStart));
+          return (
+            <div key={date}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontSize: 10.5, color: t.accent, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>Hari {idx + 1}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: t.text, letterSpacing: -0.3 }}>{itnFormatDate(date)}</div>
+                </div>
+                <div style={{ fontSize: 11.5, color: t.muted }}>{sorted.filter(i => i.status === "done").length}/{sorted.length}</div>
+              </div>
+
+              {sorted.length === 0 ? (
+                <div style={emptyStyle(t)}>Belum ada aktivitas untuk hari ini</div>
+              ) : (
+                sorted.map((item, i) => (
+                  <TimelineCard key={item.id} item={item} isLast={i === sorted.length - 1}
+                    onEdit={it => { setEditItem(it); setItnModal("edit"); }}
+                    onDelete={onDeleteActivity}
+                    onToggleStatus={onToggleStatus}
+                    onAddExpense={onAddExpenseFromActivity}
+                    t={t}
+                  />
+                ))
+              )}
+
+              <button onClick={() => { setAddDate(date); setEditItem(null); setItnModal("add"); }} style={{ width: "100%", marginTop: 10, padding: "9px", border: `1px dashed ${t.border}`, background: "transparent", borderRadius: 10, color: t.muted, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", fontFamily: "inherit" }}>
+                <Plus size={12} /> Tambah aktivitas
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {itnModal === "add"      && <ActivityFormModal item={null} dates={dates} defaultDate={addDate} onSave={it => { onSaveActivity(it); setItnModal(null); }} onClose={() => setItnModal(null)} t={t} />}
+      {itnModal === "edit"     && <ActivityFormModal item={editItem} dates={dates} onSave={it => { onSaveActivity(it); setItnModal(null); setEditItem(null); }} onClose={() => { setItnModal(null); setEditItem(null); }} t={t} />}
+      {itnModal === "import"   && <ImportModal onImport={handleImport} onClose={() => setItnModal(null)} t={t} />}
+      {itnModal === "settings" && <ItnSettingsModal itn={itn} onSave={(s, d) => { onUpdateItn(s, d); }} onClose={() => setItnModal(null)} t={t} />}
+    </div>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────────────
 export default function App() {
   const [dark, toggleDark] = useDark();
@@ -1360,6 +1735,8 @@ export default function App() {
   const [openExpense, setOpen]  = useState(null);
   const [filterCat, setFilterCat] = useState("all");
   const [activity, setActivity] = useState([]);
+  const [itn, setItn] = useState({ startDate: itnToday(), numDays: 4, activities: [] });
+  const [prefillExpense, setPrefillExpense] = useState(null);
   const [myId, setMyIdState] = useState(() => getMyId());
   const [pullDist, setPullDist] = useState(0);
   const [pulling, setPulling] = useState(false);
@@ -1378,6 +1755,7 @@ export default function App() {
       setMembers(data.members || []);
       setExpenses(data.expenses || []);
       setActivity(data.activity || []);
+      setItn(data.itn || { startDate: itnToday(), numDays: 4, activities: [] });
     } catch { } finally { if (isInit) setLoading(false); }
   }, []);
 
@@ -1481,7 +1859,7 @@ export default function App() {
       setActivity(newActivity);
     }
     try {
-      await sb.saveTrip(tripId, { name, members: m, expenses: e, activity: newActivity });
+      await sb.saveTrip(tripId, { name, members: m, expenses: e, activity: newActivity, itn });
       lastUpdatedRef.current = new Date().toISOString();
       setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800);
     } catch { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); }
@@ -1579,6 +1957,54 @@ export default function App() {
     setExpenses(next);
     persist(members, next, undefined, exp ? { action: "menghapus pengeluaran", target: exp.desc, amount: exp.amount } : null);
     try { await sb.deletePhoto(id); } catch {}
+  };
+
+  // ── Itinerary mutations ─────────────────────────────────────
+  const saveActivity = (item) => {
+    const existing = (itn.activities || []).find(a => a.id === item.id);
+    const next = existing
+      ? (itn.activities || []).map(a => a.id === item.id ? item : a)
+      : [...(itn.activities || []), item];
+    const newItn = { ...itn, activities: next };
+    setItn(newItn);
+    // persist with newItn directly (avoid stale closure)
+    setSaveState("saving");
+    sb.saveTrip(tripId, { name: tripName, members, expenses, activity, itn: newItn })
+      .then(() => { lastUpdatedRef.current = new Date().toISOString(); setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800); })
+      .catch(() => { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); });
+  };
+  const deleteActivity = (id) => {
+    const next = (itn.activities || []).filter(a => a.id !== id);
+    const newItn = { ...itn, activities: next };
+    setItn(newItn);
+    setSaveState("saving");
+    sb.saveTrip(tripId, { name: tripName, members, expenses, activity, itn: newItn })
+      .then(() => { lastUpdatedRef.current = new Date().toISOString(); setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800); })
+      .catch(() => { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); });
+  };
+  const toggleActivityStatus = (id) => {
+    const cycle = { upcoming: "current", current: "done", done: "upcoming" };
+    const next = (itn.activities || []).map(a => a.id !== id ? a : { ...a, status: cycle[a.status] || "upcoming" });
+    const newItn = { ...itn, activities: next };
+    setItn(newItn);
+    setSaveState("saving");
+    sb.saveTrip(tripId, { name: tripName, members, expenses, activity, itn: newItn })
+      .then(() => { lastUpdatedRef.current = new Date().toISOString(); setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800); })
+      .catch(() => { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); });
+  };
+  const updateItnSettings = (startDate, numDays) => {
+    const newItn = { ...itn, startDate, numDays };
+    setItn(newItn);
+    setSaveState("saving");
+    sb.saveTrip(tripId, { name: tripName, members, expenses, activity, itn: newItn })
+      .then(() => { lastUpdatedRef.current = new Date().toISOString(); setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800); })
+      .catch(() => { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); });
+  };
+  const handleAddExpenseFromActivity = (activityItem) => {
+    // Map itinerary category to expense category
+    const catMap = { food: "makan", transport: "transport", accommodation: "penginapan", entertainment: "hiburan", coffee: "makan", leisure: "lainnya", religion: "lainnya", itn_other: "lainnya" };
+    setPrefillExpense({ desc: activityItem.activity, category: catMap[activityItem.category] || "lainnya" });
+    setTab("expenses");
   };
 
   const total   = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses]);
@@ -1749,16 +2175,41 @@ export default function App() {
 
       {/* ─── Tabs ─── */}
       <div style={{ padding: "24px 20px 0", display: "flex", gap: 24, borderBottom: `1px solid ${t.border}`, marginTop: 24 }}>
-        {[["expenses","Pengeluaran",Receipt],["balance","Saldo",Scale]].map(([key, label, Icon]) => (
-          <button key={key} onClick={() => setTab(key)} style={{ background: "none", border: "none", padding: "0 0 10px", display: "flex", alignItems: "center", gap: 6, fontSize: 14.5, fontWeight: 600, color: tab===key ? t.text : t.muted, borderBottom: tab===key ? `2px solid ${t.accent}` : "2px solid transparent", marginBottom: -1, fontFamily: "inherit" }}>
+        {[["itinerary","Itinerary",Calendar],["expenses","Pengeluaran",Receipt],["balance","Saldo",Scale]].map(([key, label, Icon]) => (
+          <button key={key} onClick={() => { setTab(key); if (key !== "expenses") setPrefillExpense(null); }} style={{ background: "none", border: "none", padding: "0 0 10px", display: "flex", alignItems: "center", gap: 6, fontSize: 14.5, fontWeight: 600, color: tab===key ? t.text : t.muted, borderBottom: tab===key ? `2px solid ${t.accent}` : "2px solid transparent", marginBottom: -1, fontFamily: "inherit" }}>
             <Icon size={14} strokeWidth={2.2} /> {label}
           </button>
         ))}
       </div>
 
+      {/* ─── Itinerary tab ─── */}
+      {tab === "itinerary" && (
+        <ItineraryTab
+          itn={itn}
+          onSaveActivity={saveActivity}
+          onDeleteActivity={deleteActivity}
+          onToggleStatus={toggleActivityStatus}
+          onUpdateItn={updateItnSettings}
+          onAddExpenseFromActivity={handleAddExpenseFromActivity}
+          members={members}
+          t={t}
+        />
+      )}
+
       {/* ─── Expenses tab ─── */}
       {tab === "expenses" && (
         <section style={{ padding: "16px 20px 0" }}>
+          {/* Prefill banner from itinerary */}
+          {prefillExpense && members.length > 0 && (
+            <div style={{ background: t.accentSoft, border: `1px solid ${t.accent}33`, borderRadius: 11, padding: "10px 14px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, color: t.accent, fontWeight: 600 }}>Dari itinerary</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: t.text }}>{prefillExpense.desc}</div>
+              </div>
+              <button onClick={() => { setModal("manual"); }} style={{ ...btnPrimary(t), flex: "none", padding: "7px 12px", fontSize: 13 }}><Plus size={13} /> Catat</button>
+              <button onClick={() => setPrefillExpense(null)} style={btnX(t)}><X size={14} /></button>
+            </div>
+          )}
           {members.length > 0 && (
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
               <button onClick={() => setModal("scan")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "12px", border: "none", background: t.accent, color: t.accentText, borderRadius: 11, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}><Camera size={15} /> Scan struk</button>
@@ -1886,7 +2337,7 @@ export default function App() {
       )}
 
       {modal === "scan"     && <ScanModal     members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
-      {modal === "manual"   && <ManualModal   members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
+      {modal === "manual"   && <ManualModal   members={members} onClose={() => { setModal(null); setPrefillExpense(null); }} onSave={(e, p) => { addExpense(e, p); setPrefillExpense(null); }} prefill={prefillExpense} t={t} />}
       {modal === "export"   && <ExportModal   tripId={tripId} tripName={tripName} members={members} expenses={expenses} balances={balances} tx={tx} onClose={() => setModal(null)} t={t} />}
       {modal === "trips"    && <TripSelector  currentId={tripId} trips={allTrips} onSelect={switchTrip} onCreate={createTrip} onDelete={deleteTrip} onClose={() => setModal(null)} t={t} />}
       {modal === "stats"    && <StatsModal    tripName={tripName} members={members} expenses={expenses} onClose={() => setModal(null)} t={t} />}
