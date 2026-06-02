@@ -1382,64 +1382,231 @@ function ItnCatChips({ value, onChange, t }) {
 
 // ── Import from spreadsheet ───────────────────────────────────
 function ImportModal({ onImport, onClose, t }) {
-  const [text, setText] = useState("");
-  const [err, setErr]   = useState("");
-  const handle = () => {
-    if (!text.trim()) return;
-    setErr("");
-    try {
-      const lines = text.trim().split("\n").filter(l => l.trim());
-      const rows  = lines.map(l => l.split("\t").map(c => c.trim()));
-      const dataRows = rows.filter(r => {
-        const f = (r[0]||"").toLowerCase();
-        return !["day","hari","tanggal","aktivitas"].includes(f) && r.length >= 4;
-      });
-      let currentDate = itnToday();
-      const items = [];
-      dataRows.forEach(r => {
-        const dateCol = r[1] || r[0] || "";
-        const dm = dateCol.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
-        if (dm) {
-          const [,d,m,y] = dm;
-          const yr = y.length===2?"20"+y:y;
-          currentDate = `${yr}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
-        }
-        const timeStart = (r[2]||"").slice(0,5);
-        const timeEnd   = (r[3]||"").slice(0,5);
-        const activity  = r[5] || r[4] || "";
-        const location  = r[6] || "";
-        const catRaw    = (r[8]||r[7]||"").toLowerCase();
-        if (!activity) return;
-        let catId = "itn_other";
-        if (/food|makan|sarapan|lunch|dinner|jurit/i.test(catRaw + activity)) catId = "food";
-        if (/transport|otw|perjalanan|pulang/i.test(catRaw + activity)) catId = "transport";
-        if (/accommod|penginapan|check.in|check.out|bobo/i.test(catRaw + activity)) catId = "accommodation";
-        if (/leisure|rest|prepare|santai/i.test(catRaw + activity)) catId = "leisure";
-        if (/entertain|tennis|golf/i.test(catRaw + activity)) catId = "entertainment";
-        if (/religi|sholat|masjid|gereja/i.test(catRaw + activity)) catId = "religion";
-        if (/coffee|kopi|ngopi|cafe/i.test(catRaw + activity)) catId = "coffee";
-        items.push({ id: uid(), date: currentDate, timeStart, timeEnd, activity, location, category: catId, status: "upcoming", notes: "" });
-      });
-      if (!items.length) { setErr("Tidak ada baris yang terbaca. Pastikan copy dari spreadsheet (tab-separated)."); return; }
-      onImport(items);
-    } catch(e) { setErr("Gagal: " + e.message); }
+  const [step, setStep]       = useState("pick"); // pick | preview | done
+  const [err, setErr]         = useState("");
+  const [loading, setLoading] = useState(false);
+  const [parsed, setParsed]   = useState([]); // raw rows from file
+  const [preview, setPreview] = useState([]); // mapped items
+  const [colMap, setColMap]   = useState({    // column index mapping
+    date: 1, timeStart: 2, timeEnd: 3, activity: 5, location: 6, category: 8
+  });
+  const [headers, setHeaders] = useState([]);
+  const fileRef = useRef();
+
+  const autoDetectCols = (rows) => {
+    if (!rows.length) return;
+    const h = rows[0].map((v, i) => ({ label: String(v||"").toLowerCase(), idx: i }));
+    const find = (...kws) => h.find(({ label }) => kws.some(k => label.includes(k)))?.idx ?? -1;
+    const newMap = {
+      date:      find("tanggal","date","tgl"),
+      timeStart: find("time start","mulai","start","jam mulai"),
+      timeEnd:   find("time end","selesai","end","jam selesai"),
+      activity:  find("aktivitas","activity","kegiatan","acara"),
+      location:  find("lokasi","location","tempat","place"),
+      category:  find("kategori","category","cat","tipe"),
+    };
+    // fallback positional if not found
+    if (newMap.date < 0)      newMap.date      = 1;
+    if (newMap.timeStart < 0) newMap.timeStart  = 2;
+    if (newMap.timeEnd < 0)   newMap.timeEnd    = 3;
+    if (newMap.activity < 0)  newMap.activity   = Math.max(4, 5);
+    if (newMap.location < 0)  newMap.location   = 6;
+    if (newMap.category < 0)  newMap.category   = 8;
+    setColMap(newMap);
+    return newMap;
   };
+
+  const mapToItems = (rows, cm) => {
+    let currentDate = itnToday();
+    const items = [];
+    // Skip header row
+    const dataRows = rows.slice(1).filter(r => r.some(v => String(v||"").trim()));
+    dataRows.forEach(r => {
+      const get = (idx) => String(r[idx] ?? "").trim();
+
+      // Parse date — handle Excel serial, dd/mm/yyyy, or text
+      const rawDate = get(cm.date);
+      if (rawDate) {
+        // Excel date serial (number)
+        const serial = Number(rawDate);
+        if (!isNaN(serial) && serial > 1000) {
+          const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
+          if (!isNaN(d)) currentDate = d.toISOString().slice(0, 10);
+        } else {
+          const dm = rawDate.match(/(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/);
+          if (dm) {
+            const [, d, m, y] = dm;
+            const yr = y.length === 2 ? "20" + y : y;
+            currentDate = `${yr}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+          }
+        }
+      }
+
+      // Time — handle "6:00:00", "06:00", numeric (fraction of day)
+      const parseTime = (raw) => {
+        if (!raw) return "";
+        const n = Number(raw);
+        if (!isNaN(n) && n < 1) {
+          // Excel time fraction
+          const totalMin = Math.round(n * 1440);
+          const h = Math.floor(totalMin / 60), m = totalMin % 60;
+          return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+        }
+        const m = String(raw).match(/(\d{1,2}):(\d{2})/);
+        return m ? `${m[1].padStart(2,"0")}:${m[2]}` : "";
+      };
+
+      const timeStart = parseTime(get(cm.timeStart));
+      const timeEnd   = parseTime(get(cm.timeEnd));
+      const activity  = get(cm.activity);
+      const location  = get(cm.location);
+      const catRaw    = get(cm.category).toLowerCase();
+
+      if (!activity || ["aktivitas","activity","kegiatan"].includes(activity.toLowerCase())) return;
+
+      let catId = "itn_other";
+      if (/food|makan|sarapan|lunch|dinner|jurit/i.test(catRaw + activity))       catId = "food";
+      if (/transport|otw|perjalanan|pulang/i.test(catRaw + activity))              catId = "transport";
+      if (/accommod|penginapan|check.in|check.out|bobo/i.test(catRaw + activity)) catId = "accommodation";
+      if (/leisure|rest|prepare|santai/i.test(catRaw + activity))                  catId = "leisure";
+      if (/entertain|tennis|golf/i.test(catRaw + activity))                        catId = "entertainment";
+      if (/religi|sholat|masjid|gereja/i.test(catRaw + activity))                 catId = "religion";
+      if (/coffee|kopi|ngopi|cafe/i.test(catRaw + activity))                      catId = "coffee";
+
+      items.push({ id: uid(), date: currentDate, timeStart, timeEnd, activity, location, category: catId, status: "upcoming", notes: "" });
+    });
+    return items;
+  };
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setErr(""); setLoading(true);
+    try {
+      const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+      const buf  = await file.arrayBuffer();
+      const wb   = XLSX.read(buf, { type: "array", cellDates: false });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      if (!rows.length) { setErr("File kosong atau tidak bisa dibaca."); setLoading(false); return; }
+      setParsed(rows);
+      setHeaders(rows[0].map(String));
+      const cm = autoDetectCols(rows);
+      setPreview(mapToItems(rows, cm || colMap));
+      setStep("preview");
+    } catch(e) {
+      setErr("Gagal membaca file: " + e.message);
+    }
+    setLoading(false);
+  };
+
+  const refreshPreview = (newMap) => {
+    setPreview(mapToItems(parsed, newMap));
+  };
+
+  const updateCol = (field, idx) => {
+    const nm = { ...colMap, [field]: Number(idx) };
+    setColMap(nm);
+    refreshPreview(nm);
+  };
+
+  const catOf2 = (id) => ITINERARY_CATS.find(c => c.id === id) || ITINERARY_CATS[7];
+
   return (
     <div style={ov} onClick={onClose}>
-      <div style={modalSt(t)} onClick={e => e.stopPropagation()}>
+      <div style={{ ...modalSt(t), maxHeight: "92vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <h3 style={mTitle(t)}>Import Spreadsheet</h3>
+          <h3 style={mTitle(t)}>Import Itinerary</h3>
           <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
         </div>
-        <p style={{ fontSize: 13.5, color: t.muted, margin: "0 0 10px", lineHeight: 1.6 }}>
-          Buka Google Sheets → pilih semua baris data → Ctrl+C → paste di sini.
-        </p>
-        <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Paste dari Google Sheets / Excel..." style={{ ...inputSt(t), height: 140, resize: "vertical", fontFamily: "monospace", fontSize: 12 }} autoFocus />
-        {err && <div style={{ marginTop: 8, padding: "8px 12px", background: t.danger + "18", border: `1px solid ${t.danger}44`, borderRadius: 8, fontSize: 12.5, color: t.danger }}>{err}</div>}
-        <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-          <button onClick={onClose} style={btnSecondary(t)}>Batal</button>
-          <button onClick={handle} style={btnPrimary(t)}><Download size={15} /> Import</button>
-        </div>
+
+        {step === "pick" && (
+          <>
+            <p style={{ fontSize: 13.5, color: t.muted, margin: "0 0 16px", lineHeight: 1.6 }}>
+              Upload file Excel atau CSV itinerary kamu. Kolom akan dideteksi otomatis.
+            </p>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv,.ods" style={{ display: "none" }}
+              onChange={e => handleFile(e.target.files[0])} />
+            {loading ? (
+              <div style={{ textAlign: "center", padding: "30px 0" }}>
+                <Loader2 size={24} style={{ color: t.accent, animation: "spin 1s linear infinite" }} />
+                <div style={{ fontSize: 13, color: t.muted, marginTop: 10 }}>Membaca file…</div>
+              </div>
+            ) : (
+              <button onClick={() => fileRef.current.click()} style={{ ...btnPrimary(t), width: "100%", padding: "14px" }}>
+                <Download size={16} /> Pilih file Excel / CSV
+              </button>
+            )}
+            {err && <div style={{ marginTop: 10, padding: "10px 12px", background: t.danger + "18", border: `1px solid ${t.danger}44`, borderRadius: 8, fontSize: 12.5, color: t.danger }}>{err}</div>}
+            <div style={{ marginTop: 14, padding: "10px 12px", background: t.subtle, borderRadius: 10, fontSize: 12, color: t.muted, lineHeight: 1.6 }}>
+              Kolom yang dibaca: <b>Tanggal, Jam mulai, Jam selesai, Aktivitas, Lokasi, Kategori</b>. Nama kolom dideteksi otomatis — bisa diubah manual di langkah berikutnya.
+            </div>
+          </>
+        )}
+
+        {step === "preview" && (
+          <>
+            {/* Column mapping */}
+            <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: t.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Mapping kolom</div>
+              {[
+                ["Tanggal",    "date"],
+                ["Jam mulai",  "timeStart"],
+                ["Jam selesai","timeEnd"],
+                ["Aktivitas",  "activity"],
+                ["Lokasi",     "location"],
+                ["Kategori",   "category"],
+              ].map(([label, field]) => (
+                <div key={field} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, color: t.textSoft, width: 90, flexShrink: 0 }}>{label}</span>
+                  <select value={colMap[field]} onChange={e => updateCol(field, e.target.value)}
+                    style={{ ...inputSt(t), padding: "5px 8px", fontSize: 12.5, flex: 1 }}>
+                    <option value={-1}>— Abaikan —</option>
+                    {headers.map((h, i) => (
+                      <option key={i} value={i}>{i}: {h || "(kosong)"}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {/* Preview list */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: t.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
+              Preview — {preview.length} aktivitas ditemukan
+            </div>
+            {preview.length === 0 ? (
+              <div style={emptyStyle(t)}>Tidak ada aktivitas yang terdeteksi. Coba ubah mapping kolom di atas.</div>
+            ) : (
+              <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden", maxHeight: "40vh", overflowY: "auto" }}>
+                {preview.map((item, idx) => {
+                  const cat = catOf2(item.category);
+                  return (
+                    <div key={idx} style={{ padding: "9px 13px", borderTop: idx > 0 ? `1px solid ${t.divider}` : "none", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <div style={{ width: 6, height: 6, borderRadius: 6, background: cat.color, marginTop: 6, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13.5, color: t.text }}>{item.activity}</div>
+                        <div style={{ fontSize: 11.5, color: t.muted, marginTop: 1 }}>
+                          {itnFormatDate(item.date)} · {itnFmt(item.timeStart)}{item.timeEnd ? `–${itnFmt(item.timeEnd)}` : ""}
+                          {item.location ? ` · ${item.location}` : ""}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 11, color: cat.color, fontWeight: 600, flexShrink: 0 }}>{cat.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {err && <div style={{ marginTop: 8, padding: "8px 12px", background: t.danger + "18", border: `1px solid ${t.danger}44`, borderRadius: 8, fontSize: 12.5, color: t.danger }}>{err}</div>}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button onClick={() => { setStep("pick"); setErr(""); }} style={btnSecondary(t)}>Ganti file</button>
+              <button onClick={() => { if (preview.length) { onImport(preview); } }} disabled={!preview.length}
+                style={{ ...btnPrimary(t), opacity: preview.length ? 1 : 0.5 }}>
+                <Check size={15} /> Import {preview.length} aktivitas
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
