@@ -3,8 +3,7 @@ import {
   Plus, Trash2, Users, Receipt, Scale, X, ArrowRight, Check, Camera,
   Sparkles, Loader2, CreditCard, ChevronRight, Share2, Pencil, Moon, Sun,
   UtensilsCrossed, Car, BedDouble, ShoppingBag, Music, MoreHorizontal, ChevronDown,
-  Download, Link2, Phone, History, BarChart3, Trophy, Target, Smartphone,
-  MapPin, Calendar, Sunset, Church, Coffee,
+  Download, Link2, Phone, History, BarChart3, Trophy, Target, Smartphone, Shuffle,
 } from "lucide-react";
 
 // ── Supabase ──────────────────────────────────────────────────────────
@@ -95,40 +94,6 @@ const CATEGORIES = [
   { id: "lainnya",    label: "Lainnya",    icon: MoreHorizontal,  color: "#71717a" },
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[5];
-
-// ── Itinerary helpers ────────────────────────────────────────────────
-const ITINERARY_CATS = [
-  { id: "transport",     label: "Transport",     icon: Car,             color: "#2563eb" },
-  { id: "food",          label: "Makan",         icon: UtensilsCrossed, color: "#ea580c" },
-  { id: "accommodation", label: "Penginapan",    icon: BedDouble,       color: "#16a34a" },
-  { id: "leisure",       label: "Leisure",       icon: Sunset,          color: "#db2777" },
-  { id: "entertainment", label: "Hiburan",       icon: Music,           color: "#9333ea" },
-  { id: "religion",      label: "Wisata Religi", icon: Church,          color: "#0d9488" },
-  { id: "coffee",        label: "Ngopi",         icon: Coffee,          color: "#92400e" },
-  { id: "itn_other",     label: "Lainnya",       icon: MoreHorizontal,  color: "#71717a" },
-];
-const itnCatOf = (id) => ITINERARY_CATS.find(c => c.id === id) || ITINERARY_CATS[7];
-
-const ITN_DAY_NAMES = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
-const ITN_MONTHS    = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
-const itnFmt = (t) => (t || "--:--").replace(":", ".");
-const itnToMin = (t) => { if (!t) return 0; const [h, m] = t.split(":").map(Number); return h * 60 + m; };
-const itnDur = (s, e) => {
-  if (!s || !e) return "";
-  let d = itnToMin(e) - itnToMin(s); if (d < 0) d += 1440;
-  const h = Math.floor(d / 60), m = d % 60;
-  return h === 0 ? `${m}m` : m === 0 ? `${h}j` : `${h}j ${m}m`;
-};
-const itnFormatDate = (ds) => {
-  if (!ds) return "";
-  const d = new Date(ds + "T00:00:00");
-  return `${ITN_DAY_NAMES[d.getDay()]}, ${d.getDate()} ${ITN_MONTHS[d.getMonth()]}`;
-};
-const itnAddDays = (ds, n) => {
-  const d = new Date(ds + "T00:00:00"); d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
-};
-const itnToday = () => new Date().toISOString().slice(0, 10);
 
 function readAsDataURL(file) {
   return new Promise((resolve, reject) => {
@@ -389,14 +354,14 @@ const T = {
     text: "#1c1917", textSoft: "#44403c", muted: "#78716c",
     border: "#e7e5e4", divider: "#f5f5f4",
     accent: "#ea580c", accentSoft: "#fff7ed", accentText: "#ffffff",
-    danger: "#dc2626", success: "#16a34a", warn: "#d97706",
+    danger: "#dc2626", success: "#16a34a",
   },
   dark: {
     bg: "#0c0a09", surface: "#1c1917", subtle: "#1c1917",
     text: "#fafaf9", textSoft: "#d6d3d1", muted: "#a8a29e",
     border: "#292524", divider: "#1c1917",
     accent: "#fb923c", accentSoft: "#1c1310", accentText: "#0c0a09",
-    danger: "#f87171", success: "#4ade80", warn: "#fbbf24",
+    danger: "#f87171", success: "#4ade80",
   },
 };
 
@@ -983,12 +948,12 @@ Periksa hasil sebelum balas: pastikan jumlah items.price + tax + service - disco
 }
 
 // ── Manual Modal ──────────────────────────────────────────────────────
-function ManualModal({ members, onClose, onSave, prefill, t }) {
-  const [desc, setDesc]     = useState(prefill?.desc || "");
+function ManualModal({ members, onClose, onSave, t }) {
+  const [desc, setDesc]     = useState("");
   const [amount, setAmount] = useState("");
   const [paidBy, setPaidBy] = useState(members[0]?.id || "");
   const [among, setAmong]   = useState(members.map((m) => m.id));
-  const [cat, setCat]       = useState(prefill?.category || "lainnya");
+  const [cat, setCat]       = useState("lainnya");
   const toggle = (id) => setAmong((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
   const save = () => {
     const amt = parseInt(String(amount).replace(/\D/g,""),10);
@@ -1364,556 +1329,195 @@ function IdentityPicker({ members, currentId, onSelect, onSkip, t }) {
 }
 
 
-// ═══════════════════════════════════════════════════════════════
-// ITINERARY COMPONENTS
-// ═══════════════════════════════════════════════════════════════
-
-// ── Itinerary Cat Chips ───────────────────────────────────────
-function ItnCatChips({ value, onChange, t }) {
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      {ITINERARY_CATS.map(c => {
-        const on = value === c.id;
-        return <button key={c.id} onClick={() => onChange(c.id)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 11px", borderRadius: 8, fontSize: 12.5, fontWeight: 500, border: `1px solid ${on ? c.color : t.border}`, background: on ? c.color + "18" : t.surface, color: on ? c.color : t.textSoft, cursor: "pointer", fontFamily: "inherit" }}><c.icon size={12} strokeWidth={2} />{c.label}</button>;
-      })}
-    </div>
-  );
-}
-
-// ── Import from spreadsheet ───────────────────────────────────
-function ImportModal({ onImport, onClose, t }) {
-  const [step, setStep]       = useState("pick"); // pick | preview | done
-  const [err, setErr]         = useState("");
-  const [loading, setLoading] = useState(false);
-  const [parsed, setParsed]   = useState([]); // raw rows from file
-  const [preview, setPreview] = useState([]); // mapped items
-  const [colMap, setColMap]   = useState({    // column index mapping
-    date: 1, timeStart: 2, timeEnd: 3, activity: 5, location: 6, category: 8
-  });
-  const [headers, setHeaders] = useState([]);
-  const fileRef = useRef();
-
-  const autoDetectCols = (rows) => {
-    if (!rows.length) return;
-    const h = rows[0].map((v, i) => ({ label: String(v||"").toLowerCase(), idx: i }));
-    const find = (...kws) => h.find(({ label }) => kws.some(k => label.includes(k)))?.idx ?? -1;
-    const newMap = {
-      date:      find("tanggal","date","tgl"),
-      timeStart: find("time start","mulai","start","jam mulai"),
-      timeEnd:   find("time end","selesai","end","jam selesai"),
-      activity:  find("aktivitas","activity","kegiatan","acara"),
-      location:  find("lokasi","location","tempat","place"),
-      category:  find("kategori","category","cat","tipe"),
-    };
-    // fallback positional if not found
-    if (newMap.date < 0)      newMap.date      = 1;
-    if (newMap.timeStart < 0) newMap.timeStart  = 2;
-    if (newMap.timeEnd < 0)   newMap.timeEnd    = 3;
-    if (newMap.activity < 0)  newMap.activity   = Math.max(4, 5);
-    if (newMap.location < 0)  newMap.location   = 6;
-    if (newMap.category < 0)  newMap.category   = 8;
-    setColMap(newMap);
-    return newMap;
+// ── Random Picker Modal ───────────────────────────────────────────────
+function RandomPickerModal({ onClose, t }) {
+  const PRESETS = {
+    "Makan siang": ["Warteg", "Padang", "Mie Ayam", "Soto", "Sate", "Bakso", "Pecel Lele", "Nasi Goreng"],
+    "Ngopi": ["Kopi Kenangan", "Janji Jiwa", "Fore", "Kopi lokal", "Starbucks", "Kafe pinggir jalan"],
+    "Sarapan": ["Nasi Uduk", "Bubur Ayam", "Lontong Sayur", "Roti Bakar", "Indomie", "Nasi Kuning"],
+    "Cemilan": ["Martabak", "Batagor", "Siomay", "Cireng", "Gorengan", "Seblak"],
   };
 
-  const mapToItems = (rows, cm) => {
-    let currentDate = itnToday();
-    const items = [];
-    // Skip header row
-    const dataRows = rows.slice(1).filter(r => r.some(v => String(v||"").trim()));
-    dataRows.forEach(r => {
-      const get = (idx) => String(r[idx] ?? "").trim();
+  const [items, setItems]       = useState(PRESETS["Makan siang"]);
+  const [newItem, setNewItem]   = useState("");
+  const [spinning, setSpinning] = useState(false);
+  const [result, setResult]     = useState(null);
+  const [angle, setAngle]       = useState(0);
+  const [activePreset, setPreset] = useState("Makan siang");
+  const canvasRef = useRef();
+  const animRef   = useRef();
 
-      // Parse date — handle Excel serial, dd/mm/yyyy, or text
-      const rawDate = get(cm.date);
-      if (rawDate) {
-        // Excel date serial (number)
-        const serial = Number(rawDate);
-        if (!isNaN(serial) && serial > 1000) {
-          const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
-          if (!isNaN(d)) currentDate = d.toISOString().slice(0, 10);
-        } else {
-          const dm = rawDate.match(/(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/);
-          if (dm) {
-            const [, d, m, y] = dm;
-            const yr = y.length === 2 ? "20" + y : y;
-            currentDate = `${yr}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
-          }
-        }
-      }
+  const COLORS = ["#ea580c","#2563eb","#16a34a","#9333ea","#ca8a04","#db2777","#0d9488","#a16207","#c2410c","#1d4ed8"];
 
-      // Time — handle "6:00:00", "06:00", numeric (fraction of day)
-      const parseTime = (raw) => {
-        if (!raw) return "";
-        const n = Number(raw);
-        if (!isNaN(n) && n < 1) {
-          // Excel time fraction
-          const totalMin = Math.round(n * 1440);
-          const h = Math.floor(totalMin / 60), m = totalMin % 60;
-          return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
-        }
-        const m = String(raw).match(/(\d{1,2}):(\d{2})/);
-        return m ? `${m[1].padStart(2,"0")}:${m[2]}` : "";
-      };
+  const drawWheel = (currentAngle) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !items.length) return;
+    const ctx = canvas.getContext("2d");
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    const r  = cx - 4;
+    const slice = (2 * Math.PI) / items.length;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const timeStart = parseTime(get(cm.timeStart));
-      const timeEnd   = parseTime(get(cm.timeEnd));
-      const activity  = get(cm.activity);
-      const location  = get(cm.location);
-      const catRaw    = get(cm.category).toLowerCase();
+    items.forEach((item, i) => {
+      const start = currentAngle + i * slice;
+      const end   = start + slice;
+      // Slice
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, start, end);
+      ctx.closePath();
+      ctx.fillStyle = COLORS[i % COLORS.length];
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
 
-      if (!activity || ["aktivitas","activity","kegiatan"].includes(activity.toLowerCase())) return;
-
-      let catId = "itn_other";
-      if (/food|makan|sarapan|lunch|dinner|jurit/i.test(catRaw + activity))       catId = "food";
-      if (/transport|otw|perjalanan|pulang/i.test(catRaw + activity))              catId = "transport";
-      if (/accommod|penginapan|check.in|check.out|bobo/i.test(catRaw + activity)) catId = "accommodation";
-      if (/leisure|rest|prepare|santai/i.test(catRaw + activity))                  catId = "leisure";
-      if (/entertain|tennis|golf/i.test(catRaw + activity))                        catId = "entertainment";
-      if (/religi|sholat|masjid|gereja/i.test(catRaw + activity))                 catId = "religion";
-      if (/coffee|kopi|ngopi|cafe/i.test(catRaw + activity))                      catId = "coffee";
-
-      items.push({ id: uid(), date: currentDate, timeStart, timeEnd, activity, location, category: catId, status: "upcoming", notes: "" });
+      // Label
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(start + slice / 2);
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${Math.min(13, 110 / items.length)}px Inter, sans-serif`;
+      const maxLen = 12;
+      const label  = item.length > maxLen ? item.slice(0, maxLen) + "…" : item;
+      ctx.fillText(label, r - 8, 4);
+      ctx.restore();
     });
-    return items;
+
+    // Center circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, 18, 0, 2 * Math.PI);
+    ctx.fillStyle = t.bg;
+    ctx.fill();
+    ctx.strokeStyle = t.border;
+    ctx.lineWidth = 2;
+    ctx.stroke();
   };
 
-  const handleFile = async (file) => {
-    if (!file) return;
-    setErr(""); setLoading(true);
-    try {
-      const name = file.name.toLowerCase();
-      let rows = [];
+  useEffect(() => { drawWheel(angle); }, [items, angle, t]);
 
-      if (name.endsWith(".csv")) {
-        // ── CSV parser ──────────────────────────────────────
-        const text = await file.text();
-        rows = text.trim().split(/\r?\n/).map(line => {
-          // Handle quoted fields
-          const cols = []; let cur = "", inQ = false;
-          for (let i = 0; i < line.length; i++) {
-            const ch = line[i];
-            if (ch === '"') { inQ = !inQ; }
-            else if ((ch === "," || ch === ";") && !inQ) { cols.push(cur.trim()); cur = ""; }
-            else cur += ch;
-          }
-          cols.push(cur.trim());
-          return cols;
-        }).filter(r => r.some(v => v));
+  const spin = () => {
+    if (spinning || items.length < 2) return;
+    setSpinning(true); setResult(null);
 
-      } else if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".ods")) {
-        // ── XLSX parser via JSZip + XML ──────────────────────
-        // Load JSZip from CDN using script tag approach
-        rows = await parseXlsx(file);
+    const extraSpins  = 5 + Math.random() * 5;
+    const targetAngle = angle + extraSpins * 2 * Math.PI + Math.random() * 2 * Math.PI;
+    const duration    = 3500 + Math.random() * 1000;
+    const startTime   = performance.now();
+    const startAngle  = angle;
+
+    const easeOut = (t) => 1 - Math.pow(1 - t, 4);
+
+    const animate = (now) => {
+      const elapsed  = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const current  = startAngle + (targetAngle - startAngle) * easeOut(progress);
+      setAngle(current);
+      drawWheel(current);
+
+      if (progress < 1) {
+        animRef.current = requestAnimationFrame(animate);
       } else {
-        setErr("Format tidak didukung. Gunakan .xlsx, .csv, atau .ods"); setLoading(false); return;
+        // Figure out winner: pointer is at top (−π/2), find which slice is there
+        const normalised = ((current % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        const pointerAngle = (((-Math.PI / 2) - normalised) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+        const slice  = (2 * Math.PI) / items.length;
+        const winner = items[Math.floor(pointerAngle / slice) % items.length];
+        setResult(winner);
+        setSpinning(false);
       }
-
-      if (!rows.length) { setErr("File kosong atau tidak bisa dibaca."); setLoading(false); return; }
-      setParsed(rows);
-      setHeaders(rows[0].map(String));
-      const cm = autoDetectCols(rows);
-      setPreview(mapToItems(rows, cm || colMap));
-      setStep("preview");
-    } catch(e) {
-      setErr("Gagal membaca file: " + e.message);
-    }
-    setLoading(false);
-  };
-
-  // Lightweight xlsx reader — no external deps, works in browser
-  const parseXlsx = (file) => new Promise((resolve, reject) => {
-    // Inject SheetJS via script tag (sync-safe, cached after first load)
-    if (window.__XLSX__) { readWithXLSX(file, resolve, reject); return; }
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
-    s.onload  = () => { window.__XLSX__ = window.XLSX; readWithXLSX(file, resolve, reject); };
-    s.onerror = () => reject(new Error("Gagal load parser. Coba gunakan format CSV."));
-    document.head.appendChild(s);
-  });
-
-  const readWithXLSX = (file, resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const XLSX = window.__XLSX__;
-        const wb   = XLSX.read(e.target.result, { type: "binary", cellDates: false });
-        const ws   = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-        resolve(rows);
-      } catch(err) { reject(err); }
     };
-    reader.onerror = reject;
-    reader.readAsBinaryString(file);
+    animRef.current = requestAnimationFrame(animate);
   };
 
-  const refreshPreview = (newMap) => {
-    setPreview(mapToItems(parsed, newMap));
-  };
+  useEffect(() => () => cancelAnimationFrame(animRef.current), []);
 
-  const updateCol = (field, idx) => {
-    const nm = { ...colMap, [field]: Number(idx) };
-    setColMap(nm);
-    refreshPreview(nm);
+  const addItem = () => {
+    const v = newItem.trim();
+    if (!v || items.includes(v)) return;
+    setItems([...items, v]); setNewItem(""); setResult(null);
   };
-
-  const catOf2 = (id) => ITINERARY_CATS.find(c => c.id === id) || ITINERARY_CATS[7];
+  const removeItem = (item) => { setItems(items.filter(x => x !== item)); setResult(null); };
+  const loadPreset = (name) => { setItems([...PRESETS[name]]); setPreset(name); setResult(null); setAngle(0); };
 
   return (
     <div style={ov} onClick={onClose}>
       <div style={{ ...modalSt(t), maxHeight: "92vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <h3 style={mTitle(t)}>Import Itinerary</h3>
+          <h3 style={mTitle(t)}>Random Picker 🎲</h3>
           <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
         </div>
 
-        {step === "pick" && (
-          <>
-            <p style={{ fontSize: 13.5, color: t.muted, margin: "0 0 16px", lineHeight: 1.6 }}>
-              Upload file Excel (.xlsx) atau CSV itinerary kamu. Kolom akan dideteksi otomatis.
-            </p>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
-              onChange={e => handleFile(e.target.files[0])} />
-            {loading ? (
-              <div style={{ textAlign: "center", padding: "30px 0" }}>
-                <Loader2 size={24} style={{ color: t.accent, animation: "spin 1s linear infinite" }} />
-                <div style={{ fontSize: 13, color: t.muted, marginTop: 10 }}>Membaca file…</div>
-              </div>
-            ) : (
-              <button onClick={() => fileRef.current.click()} style={{ ...btnPrimary(t), width: "100%", padding: "14px" }}>
-                <Download size={16} /> Pilih file .xlsx / .csv
-              </button>
-            )}
-            {err && <div style={{ marginTop: 10, padding: "10px 12px", background: t.danger + "18", border: `1px solid ${t.danger}44`, borderRadius: 8, fontSize: 12.5, color: t.danger }}>{err}</div>}
-            <div style={{ marginTop: 14, padding: "10px 12px", background: t.subtle, borderRadius: 10, fontSize: 12, color: t.muted, lineHeight: 1.6 }}>
-              Kolom yang dibaca: <b>Tanggal, Jam mulai, Jam selesai, Aktivitas, Lokasi, Kategori</b>. Nama kolom dideteksi otomatis — bisa diubah manual di langkah berikutnya.
-            </div>
-          </>
-        )}
-
-        {step === "preview" && (
-          <>
-            {/* Column mapping */}
-            <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: t.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Mapping kolom</div>
-              {[
-                ["Tanggal",    "date"],
-                ["Jam mulai",  "timeStart"],
-                ["Jam selesai","timeEnd"],
-                ["Aktivitas",  "activity"],
-                ["Lokasi",     "location"],
-                ["Kategori",   "category"],
-              ].map(([label, field]) => (
-                <div key={field} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 13, color: t.textSoft, width: 90, flexShrink: 0 }}>{label}</span>
-                  <select value={colMap[field]} onChange={e => updateCol(field, e.target.value)}
-                    style={{ ...inputSt(t), padding: "5px 8px", fontSize: 12.5, flex: 1 }}>
-                    <option value={-1}>— Abaikan —</option>
-                    {headers.map((h, i) => (
-                      <option key={i} value={i}>{i}: {h || "(kosong)"}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-
-            {/* Preview list */}
-            <div style={{ fontSize: 11, fontWeight: 700, color: t.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
-              Preview — {preview.length} aktivitas ditemukan
-            </div>
-            {preview.length === 0 ? (
-              <div style={emptyStyle(t)}>Tidak ada aktivitas yang terdeteksi. Coba ubah mapping kolom di atas.</div>
-            ) : (
-              <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden", maxHeight: "40vh", overflowY: "auto" }}>
-                {preview.map((item, idx) => {
-                  const cat = catOf2(item.category);
-                  return (
-                    <div key={idx} style={{ padding: "9px 13px", borderTop: idx > 0 ? `1px solid ${t.divider}` : "none", display: "flex", gap: 10, alignItems: "flex-start" }}>
-                      <div style={{ width: 6, height: 6, borderRadius: 6, background: cat.color, marginTop: 6, flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13.5, color: t.text }}>{item.activity}</div>
-                        <div style={{ fontSize: 11.5, color: t.muted, marginTop: 1 }}>
-                          {itnFormatDate(item.date)} · {itnFmt(item.timeStart)}{item.timeEnd ? `–${itnFmt(item.timeEnd)}` : ""}
-                          {item.location ? ` · ${item.location}` : ""}
-                        </div>
-                      </div>
-                      <span style={{ fontSize: 11, color: cat.color, fontWeight: 600, flexShrink: 0 }}>{cat.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {err && <div style={{ marginTop: 8, padding: "8px 12px", background: t.danger + "18", border: `1px solid ${t.danger}44`, borderRadius: 8, fontSize: 12.5, color: t.danger }}>{err}</div>}
-
-            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-              <button onClick={() => { setStep("pick"); setErr(""); }} style={btnSecondary(t)}>Ganti file</button>
-              <button onClick={() => { if (preview.length) { onImport(preview); } }} disabled={!preview.length}
-                style={{ ...btnPrimary(t), opacity: preview.length ? 1 : 0.5 }}>
-                <Check size={15} /> Import {preview.length} aktivitas
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Activity Form Modal ───────────────────────────────────────
-function ActivityFormModal({ item, dates, defaultDate, onSave, onClose, t }) {
-  const [form, setForm] = useState({
-    date:      item?.date      || defaultDate || dates[0],
-    timeStart: item?.timeStart || "09:00",
-    timeEnd:   item?.timeEnd   || "10:00",
-    activity:  item?.activity  || "",
-    location:  item?.location  || "",
-    category:  item?.category  || "itn_other",
-    notes:     item?.notes     || "",
-  });
-  const s = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const save = () => {
-    if (!form.activity.trim()) return;
-    onSave({ id: item?.id || uid(), status: item?.status || "upcoming", ...form, activity: form.activity.trim(), location: form.location.trim() });
-  };
-  return (
-    <div style={ov} onClick={onClose}>
-      <div style={{ ...modalSt(t), maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <h3 style={mTitle(t)}>{item ? "Edit aktivitas" : "Tambah aktivitas"}</h3>
-          <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
+        {/* Preset chips */}
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none", marginBottom: 14 }}>
+          {Object.keys(PRESETS).map(name => (
+            <button key={name} onClick={() => loadPreset(name)} style={{
+              flexShrink: 0, padding: "5px 12px", borderRadius: 20, fontSize: 12.5, fontWeight: 600,
+              border: `1px solid ${activePreset === name ? t.accent : t.border}`,
+              background: activePreset === name ? t.accentSoft : t.surface,
+              color: activePreset === name ? t.accent : t.muted,
+              cursor: "pointer", fontFamily: "inherit",
+            }}>{name}</button>
+          ))}
         </div>
-        <input value={form.activity} onChange={e => s("activity", e.target.value)} placeholder="Nama aktivitas" style={{ ...inputSt(t), fontSize: 16, fontWeight: 600 }} autoFocus />
-        <div style={labelSt(t)}>Tanggal</div>
-        <select value={form.date} onChange={e => s("date", e.target.value)} style={inputSt(t)}>
-          {dates.map(d => <option key={d} value={d}>{itnFormatDate(d)}</option>)}
-        </select>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 16 }}>
-          <div><div style={labelSt(t)}>Mulai</div><input type="time" value={form.timeStart} onChange={e => s("timeStart", e.target.value)} style={inputSt(t)} /></div>
-          <div><div style={labelSt(t)}>Selesai</div><input type="time" value={form.timeEnd} onChange={e => s("timeEnd", e.target.value)} style={inputSt(t)} /></div>
-        </div>
-        <div style={labelSt(t)}>Lokasi</div>
-        <input value={form.location} onChange={e => s("location", e.target.value)} placeholder="Nama tempat (opsional)" style={inputSt(t)} />
-        <div style={labelSt(t)}>Kategori</div>
-        <ItnCatChips value={form.category} onChange={v => s("category", v)} t={t} />
-        <div style={labelSt(t)}>Catatan</div>
-        <textarea value={form.notes} onChange={e => s("notes", e.target.value)} placeholder="Opsional..." style={{ ...inputSt(t), height: 60, resize: "none" }} />
-        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-          <button onClick={onClose} style={btnSecondary(t)}>Batal</button>
-          <button onClick={save} style={btnPrimary(t)}><Check size={15} /> Simpan</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-// ── Timeline Card ─────────────────────────────────────────────
-function TimelineCard({ item, isLast, onEdit, onDelete, onToggleStatus, onAddExpense, t }) {
-  const [open, setOpen] = useState(false);
-  const cat = itnCatOf(item.category);
-  const dur = itnDur(item.timeStart, item.timeEnd);
-  const statusColor = item.status === "done" ? t.success : item.status === "current" ? t.warn : t.border;
-  return (
-    <div style={{ display: "flex", position: "relative" }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 26, flexShrink: 0 }}>
-        <button onClick={() => onToggleStatus(item.id)} style={{ width: 22, height: 22, borderRadius: 22, border: `2px solid ${statusColor}`, background: item.status === "done" ? statusColor : t.bg, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, zIndex: 1 }}>
-          {item.status === "done" && <Check size={11} color="#fff" strokeWidth={3} />}
-          {item.status === "current" && <div style={{ width: 7, height: 7, borderRadius: 7, background: t.warn }} />}
-        </button>
-        {!isLast && <div style={{ flex: 1, width: 2, background: t.border, margin: "3px 0", minHeight: 16 }} />}
-      </div>
-      <div style={{ flex: 1, marginLeft: 10, marginBottom: isLast ? 0 : 10 }}>
-        <div style={{ background: t.surface, border: `1px solid ${item.status === "current" ? t.warn + "55" : t.border}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", boxShadow: item.status === "current" ? `0 0 0 3px ${t.warn}22` : "none" }} onClick={() => setOpen(o => !o)}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
-                <div style={{ width: 6, height: 6, borderRadius: 6, background: cat.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 10.5, color: cat.color, fontWeight: 600 }}>{cat.label}</span>
-              </div>
-              <div style={{ fontSize: 14.5, fontWeight: 600, color: t.text }}>{item.activity}</div>
-              {item.location && <div style={{ fontSize: 11.5, color: t.muted, marginTop: 3, display: "flex", alignItems: "center", gap: 3 }}><MapPin size={10} />{item.location}</div>}
+        {/* Wheel */}
+        <div style={{ position: "relative", display: "flex", justifyContent: "center", marginBottom: 6 }}>
+          {/* Pointer */}
+          <div style={{ position: "absolute", top: -6, left: "50%", transform: "translateX(-50%)", zIndex: 2,
+            width: 0, height: 0,
+            borderLeft: "10px solid transparent",
+            borderRight: "10px solid transparent",
+            borderTop: `20px solid ${t.accent}`,
+          }} />
+          <canvas ref={canvasRef} width={260} height={260} style={{ borderRadius: "50%", display: "block" }} />
+        </div>
+
+        {/* Result */}
+        <div style={{ minHeight: 52, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+          {result ? (
+            <div style={{ textAlign: "center", animation: "fadeIn .4s ease" }}>
+              <div style={{ fontSize: 11, color: t.muted, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>Pilihannya</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: t.accent, letterSpacing: -0.5, marginTop: 4 }}>{result}!</div>
             </div>
-            <div style={{ textAlign: "right", flexShrink: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{itnFmt(item.timeStart)}</div>
-              {item.timeEnd && <div style={{ fontSize: 11, color: t.muted }}>–{itnFmt(item.timeEnd)}</div>}
-              {dur && <div style={{ fontSize: 10.5, color: t.muted }}>{dur}</div>}
-            </div>
-          </div>
-          {open && (
-            <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${t.divider}` }}>
-              {item.notes && <p style={{ fontSize: 12.5, color: t.textSoft, margin: "0 0 10px", lineHeight: 1.5 }}>{item.notes}</p>}
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <button onClick={e => { e.stopPropagation(); onEdit(item); }} style={{ ...btnSecondary(t), flex: "none", padding: "6px 10px", fontSize: 12 }}><Pencil size={11} /> Edit</button>
-                <button onClick={e => { e.stopPropagation(); onAddExpense(item); }} style={{ ...btnPrimary(t), flex: "none", padding: "6px 10px", fontSize: 12 }}><Plus size={11} /> Catat biaya</button>
-                <button onClick={e => { e.stopPropagation(); onDelete(item.id); }} style={{ ...btnSecondary(t), flex: "none", padding: "6px 10px", fontSize: 12, color: t.danger, borderColor: t.danger + "44" }}><Trash2 size={11} /></button>
-              </div>
-            </div>
+          ) : spinning ? (
+            <div style={{ fontSize: 14, color: t.muted }}>Memutar…</div>
+          ) : items.length < 2 ? (
+            <div style={{ fontSize: 13, color: t.muted }}>Tambah minimal 2 pilihan</div>
+          ) : (
+            <div style={{ fontSize: 13, color: t.muted }}>Tap spin untuk mulai</div>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
 
-// ── Itinerary Settings Modal ──────────────────────────────────
-function ItnSettingsModal({ itn, onSave, onClose, t }) {
-  const [startDate, setStartDate] = useState(itn.startDate || itnToday());
-  const [numDays, setNumDays]     = useState(itn.numDays || 4);
-  const save = () => { onSave(startDate, numDays); onClose(); };
-  return (
-    <div style={ov} onClick={onClose}>
-      <div style={modalSt(t)} onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={mTitle(t)}>Pengaturan itinerary</h3>
-          <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
+        {/* Spin button */}
+        <button onClick={spin} disabled={spinning || items.length < 2} style={{
+          ...btnPrimary(t), width: "100%", padding: "14px",
+          opacity: spinning || items.length < 2 ? 0.6 : 1,
+          fontSize: 16, letterSpacing: 0.2,
+        }}>
+          <Shuffle size={18} /> {spinning ? "Memutar…" : "SPIN!"}
+        </button>
+
+        {/* Add item */}
+        <div style={{ display: "flex", gap: 6, marginTop: 16 }}>
+          <input value={newItem} onChange={e => setNewItem(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && addItem()}
+            placeholder="Tambah pilihan…"
+            style={{ ...inputSt(t), padding: "9px 12px", fontSize: 14 }} />
+          <button onClick={addItem} style={{ background: t.accent, color: t.accentText, border: "none", borderRadius: 10, width: 40, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><Plus size={16} /></button>
         </div>
-        <div style={labelSt(t)}>Tanggal mulai trip</div>
-        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputSt(t)} />
-        <div style={labelSt(t)}>Jumlah hari</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 4 }}>
-          <button onClick={() => setNumDays(d => Math.max(1, d - 1))} style={{ ...btnSecondary(t), flex: "none", width: 40, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
-          <span style={{ fontSize: 22, fontWeight: 700, color: t.text, minWidth: 28, textAlign: "center" }}>{numDays}</span>
-          <button onClick={() => setNumDays(d => Math.min(14, d + 1))} style={{ ...btnSecondary(t), flex: "none", width: 40, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
-          <span style={{ color: t.muted, fontSize: 13 }}>hari</span>
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-          <button onClick={onClose} style={btnSecondary(t)}>Batal</button>
-          <button onClick={save} style={btnPrimary(t)}>Simpan</button>
+
+        {/* Item list */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+          {items.map((item, i) => (
+            <span key={item} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 20, background: COLORS[i % COLORS.length] + "18", border: `1px solid ${COLORS[i % COLORS.length]}44`, fontSize: 13, fontWeight: 500, color: t.text }}>
+              {item}
+              <button onClick={() => removeItem(item)} style={{ border: "none", background: "transparent", color: t.muted, padding: 0, display: "flex", cursor: "pointer", lineHeight: 1 }}><X size={12} /></button>
+            </span>
+          ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── Itinerary Tab ─────────────────────────────────────────────
-function ItineraryTab({ itn, onSaveActivity, onDeleteActivity, onToggleStatus, onUpdateItn, onAddExpenseFromActivity, members, t }) {
-  const [itnModal, setItnModal] = useState(null); // "add"|"edit"|"import"|"settings"
-  const [editItem, setEditItem] = useState(null);
-  const [addDate, setAddDate]   = useState(null);
-  const [activeDay, setActiveDay] = useState(0);
-
-  const dates = useMemo(() =>
-    Array.from({ length: itn.numDays || 4 }, (_, i) => itnAddDays(itn.startDate || itnToday(), i)),
-    [itn.startDate, itn.numDays]
-  );
-
-  const itemsByDate = useMemo(() => {
-    const m = {}; dates.forEach(d => (m[d] = []));
-    (itn.activities || []).forEach(item => {
-      if (m[item.date]) m[item.date].push(item);
-      else if (m[dates[0]]) m[dates[0]].push(item); // fallback to day 1
-    });
-    return m;
-  }, [itn.activities, dates]);
-
-  const doneCount  = (itn.activities || []).filter(i => i.status === "done").length;
-  const totalCount = (itn.activities || []).length;
-  const pct = totalCount > 0 ? Math.round(doneCount / totalCount * 100) : 0;
-
-  const handleImport = (items) => {
-    items.forEach(onSaveActivity);
-    setItnModal(null);
-  };
-
-  return (
-    <div>
-      {/* Itinerary header */}
-      <div style={{ padding: "16px 20px 0" }}>
-        {/* Date range + settings */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <div style={{ fontSize: 12, color: t.muted }}>
-            {itnFormatDate(itn.startDate || itnToday())} — {itnFormatDate(itnAddDays(itn.startDate || itnToday(), (itn.numDays || 4) - 1))} · {itn.numDays || 4} hari
-          </div>
-          <button onClick={() => setItnModal("settings")} style={{ ...btnGhost(t), padding: "5px 9px", fontSize: 12 }}>
-            <Calendar size={12} /> Atur
-          </button>
-        </div>
-
-        {/* Progress bar */}
-        {totalCount > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: t.muted, marginBottom: 4 }}>
-              <span>Progress trip</span>
-              <span>{doneCount}/{totalCount} aktivitas ({pct}%)</span>
-            </div>
-            <div style={{ height: 4, background: t.border, borderRadius: 2, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${pct}%`, background: t.accent, transition: "width .4s" }} />
-            </div>
-          </div>
-        )}
-
-        {/* Action buttons */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-          <button onClick={() => { setEditItem(null); setAddDate(dates[activeDay] || dates[0]); setItnModal("add"); }} style={{ ...btnPrimary(t), flex: 1, padding: "10px 14px", fontSize: 13.5 }}><Plus size={14} /> Tambah</button>
-          <button onClick={() => setItnModal("import")} style={{ ...btnSecondary(t), padding: "10px 14px", fontSize: 13.5 }}><Download size={14} /> Import</button>
-        </div>
-
-        {/* Day tabs */}
-        <div style={{ display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2 }}>
-          {dates.map((date, idx) => {
-            const active = activeDay === idx;
-            const dayItems = itemsByDate[date] || [];
-            const dayDone  = dayItems.filter(i => i.status === "done").length;
-            return (
-              <button key={date} onClick={() => setActiveDay(idx)} style={{ flexShrink: 0, padding: "7px 12px", border: `1px solid ${active ? t.accent : t.border}`, borderRadius: 10, background: active ? t.accent : t.surface, color: active ? t.accentText : t.textSoft, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-                <span>Hari {idx + 1}</span>
-                <span style={{ fontSize: 10, opacity: 0.8 }}>{itnFormatDate(date).split(",")[0]}</span>
-                {dayItems.length > 0 && (
-                  <div style={{ display: "flex", gap: 2, marginTop: 2 }}>
-                    {dayItems.slice(0, 5).map((_, i) => (
-                      <div key={i} style={{ width: 4, height: 4, borderRadius: 4, background: i < dayDone ? (active ? "#fff" : t.success) : (active ? "#ffffff55" : t.border) }} />
-                    ))}
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div style={{ height: 1, background: t.border, margin: "14px 0 0" }} />
-
-      {/* Day content */}
-      <div style={{ padding: "16px 20px 0" }}>
-        {dates.map((date, idx) => {
-          if (idx !== activeDay) return null;
-          const sorted = [...(itemsByDate[date] || [])].sort((a, b) => itnToMin(a.timeStart) - itnToMin(b.timeStart));
-          return (
-            <div key={date}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <div>
-                  <div style={{ fontSize: 10.5, color: t.accent, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>Hari {idx + 1}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: t.text, letterSpacing: -0.3 }}>{itnFormatDate(date)}</div>
-                </div>
-                <div style={{ fontSize: 11.5, color: t.muted }}>{sorted.filter(i => i.status === "done").length}/{sorted.length}</div>
-              </div>
-
-              {sorted.length === 0 ? (
-                <div style={emptyStyle(t)}>Belum ada aktivitas untuk hari ini</div>
-              ) : (
-                sorted.map((item, i) => (
-                  <TimelineCard key={item.id} item={item} isLast={i === sorted.length - 1}
-                    onEdit={it => { setEditItem(it); setItnModal("edit"); }}
-                    onDelete={onDeleteActivity}
-                    onToggleStatus={onToggleStatus}
-                    onAddExpense={onAddExpenseFromActivity}
-                    t={t}
-                  />
-                ))
-              )}
-
-              <button onClick={() => { setAddDate(date); setEditItem(null); setItnModal("add"); }} style={{ width: "100%", marginTop: 10, padding: "9px", border: `1px dashed ${t.border}`, background: "transparent", borderRadius: 10, color: t.muted, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", fontFamily: "inherit" }}>
-                <Plus size={12} /> Tambah aktivitas
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      {itnModal === "add"      && <ActivityFormModal item={null} dates={dates} defaultDate={addDate} onSave={it => { onSaveActivity(it); setItnModal(null); }} onClose={() => setItnModal(null)} t={t} />}
-      {itnModal === "edit"     && <ActivityFormModal item={editItem} dates={dates} onSave={it => { onSaveActivity(it); setItnModal(null); setEditItem(null); }} onClose={() => { setItnModal(null); setEditItem(null); }} t={t} />}
-      {itnModal === "import"   && <ImportModal onImport={handleImport} onClose={() => setItnModal(null)} t={t} />}
-      {itnModal === "settings" && <ItnSettingsModal itn={itn} onSave={(s, d) => { onUpdateItn(s, d); }} onClose={() => setItnModal(null)} t={t} />}
     </div>
   );
 }
@@ -1950,8 +1554,6 @@ export default function App() {
   const [openExpense, setOpen]  = useState(null);
   const [filterCat, setFilterCat] = useState("all");
   const [activity, setActivity] = useState([]);
-  const [itn, setItn] = useState({ startDate: itnToday(), numDays: 4, activities: [] });
-  const [prefillExpense, setPrefillExpense] = useState(null);
   const [myId, setMyIdState] = useState(() => getMyId());
   const [pullDist, setPullDist] = useState(0);
   const [pulling, setPulling] = useState(false);
@@ -1970,7 +1572,6 @@ export default function App() {
       setMembers(data.members || []);
       setExpenses(data.expenses || []);
       setActivity(data.activity || []);
-      setItn(data.itn || { startDate: itnToday(), numDays: 4, activities: [] });
     } catch { } finally { if (isInit) setLoading(false); }
   }, []);
 
@@ -2074,7 +1675,7 @@ export default function App() {
       setActivity(newActivity);
     }
     try {
-      await sb.saveTrip(tripId, { name, members: m, expenses: e, activity: newActivity, itn });
+      await sb.saveTrip(tripId, { name, members: m, expenses: e, activity: newActivity });
       lastUpdatedRef.current = new Date().toISOString();
       setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800);
     } catch { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); }
@@ -2174,54 +1775,6 @@ export default function App() {
     try { await sb.deletePhoto(id); } catch {}
   };
 
-  // ── Itinerary mutations ─────────────────────────────────────
-  const saveActivity = (item) => {
-    const existing = (itn.activities || []).find(a => a.id === item.id);
-    const next = existing
-      ? (itn.activities || []).map(a => a.id === item.id ? item : a)
-      : [...(itn.activities || []), item];
-    const newItn = { ...itn, activities: next };
-    setItn(newItn);
-    // persist with newItn directly (avoid stale closure)
-    setSaveState("saving");
-    sb.saveTrip(tripId, { name: tripName, members, expenses, activity, itn: newItn })
-      .then(() => { lastUpdatedRef.current = new Date().toISOString(); setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800); })
-      .catch(() => { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); });
-  };
-  const deleteActivity = (id) => {
-    const next = (itn.activities || []).filter(a => a.id !== id);
-    const newItn = { ...itn, activities: next };
-    setItn(newItn);
-    setSaveState("saving");
-    sb.saveTrip(tripId, { name: tripName, members, expenses, activity, itn: newItn })
-      .then(() => { lastUpdatedRef.current = new Date().toISOString(); setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800); })
-      .catch(() => { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); });
-  };
-  const toggleActivityStatus = (id) => {
-    const cycle = { upcoming: "current", current: "done", done: "upcoming" };
-    const next = (itn.activities || []).map(a => a.id !== id ? a : { ...a, status: cycle[a.status] || "upcoming" });
-    const newItn = { ...itn, activities: next };
-    setItn(newItn);
-    setSaveState("saving");
-    sb.saveTrip(tripId, { name: tripName, members, expenses, activity, itn: newItn })
-      .then(() => { lastUpdatedRef.current = new Date().toISOString(); setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800); })
-      .catch(() => { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); });
-  };
-  const updateItnSettings = (startDate, numDays) => {
-    const newItn = { ...itn, startDate, numDays };
-    setItn(newItn);
-    setSaveState("saving");
-    sb.saveTrip(tripId, { name: tripName, members, expenses, activity, itn: newItn })
-      .then(() => { lastUpdatedRef.current = new Date().toISOString(); setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1800); })
-      .catch(() => { setSaveState("error"); setTimeout(() => setSaveState("idle"), 3000); });
-  };
-  const handleAddExpenseFromActivity = (activityItem) => {
-    // Map itinerary category to expense category
-    const catMap = { food: "makan", transport: "transport", accommodation: "penginapan", entertainment: "hiburan", coffee: "makan", leisure: "lainnya", religion: "lainnya", itn_other: "lainnya" };
-    setPrefillExpense({ desc: activityItem.activity, category: catMap[activityItem.category] || "lainnya" });
-    setTab("expenses");
-  };
-
   const total   = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses]);
   const { balances, tx } = useMemo(() => settle(members, expenses), [members, expenses]);
   const catTotals = useMemo(() => { const r = {}; expenses.forEach((e) => { r[e.category||"lainnya"] = (r[e.category||"lainnya"]||0) + e.amount; }); return r; }, [expenses]);
@@ -2309,6 +1862,7 @@ export default function App() {
           {saveState === "saving" && <span style={{ fontSize: 11.5, color: t.muted, display: "flex", alignItems: "center", gap: 4 }}><Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} /></span>}
           {saveState === "saved"  && <span className="fadein" style={{ fontSize: 11.5, color: t.success, fontWeight: 500 }}>✓</span>}
           {saveState === "error"  && <span style={{ fontSize: 11.5, color: t.danger }}>⚠</span>}
+          <button onClick={() => setModal("picker")} style={btnX(t)} title="Random Picker"><Shuffle size={16} /></button>
           <button onClick={() => setModal("stats")} style={btnX(t)} title="Statistik"><BarChart3 size={16} /></button>
           <button onClick={() => setModal("activity")} style={btnX(t)} title="Riwayat"><History size={16} /></button>
           <button onClick={() => setModal("export")} style={btnX(t)} title="Bagikan"><Share2 size={16} /></button>
@@ -2390,41 +1944,16 @@ export default function App() {
 
       {/* ─── Tabs ─── */}
       <div style={{ padding: "24px 20px 0", display: "flex", gap: 24, borderBottom: `1px solid ${t.border}`, marginTop: 24 }}>
-        {[["itinerary","Itinerary",Calendar],["expenses","Pengeluaran",Receipt],["balance","Saldo",Scale]].map(([key, label, Icon]) => (
-          <button key={key} onClick={() => { setTab(key); if (key !== "expenses") setPrefillExpense(null); }} style={{ background: "none", border: "none", padding: "0 0 10px", display: "flex", alignItems: "center", gap: 6, fontSize: 14.5, fontWeight: 600, color: tab===key ? t.text : t.muted, borderBottom: tab===key ? `2px solid ${t.accent}` : "2px solid transparent", marginBottom: -1, fontFamily: "inherit" }}>
+        {[["expenses","Pengeluaran",Receipt],["balance","Saldo",Scale]].map(([key, label, Icon]) => (
+          <button key={key} onClick={() => setTab(key)} style={{ background: "none", border: "none", padding: "0 0 10px", display: "flex", alignItems: "center", gap: 6, fontSize: 14.5, fontWeight: 600, color: tab===key ? t.text : t.muted, borderBottom: tab===key ? `2px solid ${t.accent}` : "2px solid transparent", marginBottom: -1, fontFamily: "inherit" }}>
             <Icon size={14} strokeWidth={2.2} /> {label}
           </button>
         ))}
       </div>
 
-      {/* ─── Itinerary tab ─── */}
-      {tab === "itinerary" && (
-        <ItineraryTab
-          itn={itn}
-          onSaveActivity={saveActivity}
-          onDeleteActivity={deleteActivity}
-          onToggleStatus={toggleActivityStatus}
-          onUpdateItn={updateItnSettings}
-          onAddExpenseFromActivity={handleAddExpenseFromActivity}
-          members={members}
-          t={t}
-        />
-      )}
-
       {/* ─── Expenses tab ─── */}
       {tab === "expenses" && (
         <section style={{ padding: "16px 20px 0" }}>
-          {/* Prefill banner from itinerary */}
-          {prefillExpense && members.length > 0 && (
-            <div style={{ background: t.accentSoft, border: `1px solid ${t.accent}33`, borderRadius: 11, padding: "10px 14px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, color: t.accent, fontWeight: 600 }}>Dari itinerary</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: t.text }}>{prefillExpense.desc}</div>
-              </div>
-              <button onClick={() => { setModal("manual"); }} style={{ ...btnPrimary(t), flex: "none", padding: "7px 12px", fontSize: 13 }}><Plus size={13} /> Catat</button>
-              <button onClick={() => setPrefillExpense(null)} style={btnX(t)}><X size={14} /></button>
-            </div>
-          )}
           {members.length > 0 && (
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
               <button onClick={() => setModal("scan")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "12px", border: "none", background: t.accent, color: t.accentText, borderRadius: 11, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}><Camera size={15} /> Scan struk</button>
@@ -2551,8 +2080,9 @@ export default function App() {
         </section>
       )}
 
+      {modal === "picker"   && <RandomPickerModal onClose={() => setModal(null)} t={t} />}
       {modal === "scan"     && <ScanModal     members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
-      {modal === "manual"   && <ManualModal   members={members} onClose={() => { setModal(null); setPrefillExpense(null); }} onSave={(e, p) => { addExpense(e, p); setPrefillExpense(null); }} prefill={prefillExpense} t={t} />}
+      {modal === "manual"   && <ManualModal   members={members} onClose={() => setModal(null)} onSave={addExpense} t={t} />}
       {modal === "export"   && <ExportModal   tripId={tripId} tripName={tripName} members={members} expenses={expenses} balances={balances} tx={tx} onClose={() => setModal(null)} t={t} />}
       {modal === "trips"    && <TripSelector  currentId={tripId} trips={allTrips} onSelect={switchTrip} onCreate={createTrip} onDelete={deleteTrip} onClose={() => setModal(null)} t={t} />}
       {modal === "stats"    && <StatsModal    tripName={tripName} members={members} expenses={expenses} onClose={() => setModal(null)} t={t} />}
