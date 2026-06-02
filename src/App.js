@@ -1395,7 +1395,7 @@ function RandomPickerModal({ onClose, t }) {
     ctx.stroke();
   };
 
-  useEffect(() => { drawWheel(angle); }, [items, angle, t]);
+  useEffect(() => { drawWheel(angle); }, [items, angle, t, drawWheel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const spin = () => {
     if (spinning || items.length < 2) return;
