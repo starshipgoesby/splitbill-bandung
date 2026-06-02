@@ -4,7 +4,7 @@ import {
   Sparkles, Loader2, CreditCard, ChevronRight, Share2, Pencil, Moon, Sun,
   UtensilsCrossed, Car, BedDouble, ShoppingBag, Music, MoreHorizontal, ChevronDown,
   Download, Link2, Phone, History, BarChart3, Trophy, Target, Smartphone,
-  MapPin, Calendar, CheckCircle2, AlertCircle, Circle, Sunset, Church, Coffee,
+  MapPin, Calendar, Sunset, Church, Coffee,
 } from "lucide-react";
 
 // ── Supabase ──────────────────────────────────────────────────────────
@@ -389,14 +389,14 @@ const T = {
     text: "#1c1917", textSoft: "#44403c", muted: "#78716c",
     border: "#e7e5e4", divider: "#f5f5f4",
     accent: "#ea580c", accentSoft: "#fff7ed", accentText: "#ffffff",
-    danger: "#dc2626", success: "#16a34a",
+    danger: "#dc2626", success: "#16a34a", warn: "#d97706",
   },
   dark: {
     bg: "#0c0a09", surface: "#1c1917", subtle: "#1c1917",
     text: "#fafaf9", textSoft: "#d6d3d1", muted: "#a8a29e",
     border: "#292524", divider: "#1c1917",
     accent: "#fb923c", accentSoft: "#1c1310", accentText: "#0c0a09",
-    danger: "#f87171", success: "#4ade80",
+    danger: "#f87171", success: "#4ade80", warn: "#fbbf24",
   },
 };
 
@@ -1398,7 +1398,7 @@ function ImportModal({ onImport, onClose, t }) {
       const items = [];
       dataRows.forEach(r => {
         const dateCol = r[1] || r[0] || "";
-        const dm = dateCol.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+        const dm = dateCol.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
         if (dm) {
           const [,d,m,y] = dm;
           const yr = y.length===2?"20"+y:y;
