@@ -1482,11 +1482,33 @@ function ImportModal({ onImport, onClose, t }) {
     if (!file) return;
     setErr(""); setLoading(true);
     try {
-      const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
-      const buf  = await file.arrayBuffer();
-      const wb   = XLSX.read(buf, { type: "array", cellDates: false });
-      const ws   = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      const name = file.name.toLowerCase();
+      let rows = [];
+
+      if (name.endsWith(".csv")) {
+        // ── CSV parser ──────────────────────────────────────
+        const text = await file.text();
+        rows = text.trim().split(/\r?\n/).map(line => {
+          // Handle quoted fields
+          const cols = []; let cur = "", inQ = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') { inQ = !inQ; }
+            else if ((ch === "," || ch === ";") && !inQ) { cols.push(cur.trim()); cur = ""; }
+            else cur += ch;
+          }
+          cols.push(cur.trim());
+          return cols;
+        }).filter(r => r.some(v => v));
+
+      } else if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".ods")) {
+        // ── XLSX parser via JSZip + XML ──────────────────────
+        // Load JSZip from CDN using script tag approach
+        rows = await parseXlsx(file);
+      } else {
+        setErr("Format tidak didukung. Gunakan .xlsx, .csv, atau .ods"); setLoading(false); return;
+      }
+
       if (!rows.length) { setErr("File kosong atau tidak bisa dibaca."); setLoading(false); return; }
       setParsed(rows);
       setHeaders(rows[0].map(String));
@@ -1497,6 +1519,32 @@ function ImportModal({ onImport, onClose, t }) {
       setErr("Gagal membaca file: " + e.message);
     }
     setLoading(false);
+  };
+
+  // Lightweight xlsx reader — no external deps, works in browser
+  const parseXlsx = (file) => new Promise((resolve, reject) => {
+    // Inject SheetJS via script tag (sync-safe, cached after first load)
+    if (window.__XLSX__) { readWithXLSX(file, resolve, reject); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+    s.onload  = () => { window.__XLSX__ = window.XLSX; readWithXLSX(file, resolve, reject); };
+    s.onerror = () => reject(new Error("Gagal load parser. Coba gunakan format CSV."));
+    document.head.appendChild(s);
+  });
+
+  const readWithXLSX = (file, resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const XLSX = window.__XLSX__;
+        const wb   = XLSX.read(e.target.result, { type: "binary", cellDates: false });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        resolve(rows);
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsBinaryString(file);
   };
 
   const refreshPreview = (newMap) => {
@@ -1522,9 +1570,9 @@ function ImportModal({ onImport, onClose, t }) {
         {step === "pick" && (
           <>
             <p style={{ fontSize: 13.5, color: t.muted, margin: "0 0 16px", lineHeight: 1.6 }}>
-              Upload file Excel atau CSV itinerary kamu. Kolom akan dideteksi otomatis.
+              Upload file Excel (.xlsx) atau CSV itinerary kamu. Kolom akan dideteksi otomatis.
             </p>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv,.ods" style={{ display: "none" }}
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
               onChange={e => handleFile(e.target.files[0])} />
             {loading ? (
               <div style={{ textAlign: "center", padding: "30px 0" }}>
@@ -1533,7 +1581,7 @@ function ImportModal({ onImport, onClose, t }) {
               </div>
             ) : (
               <button onClick={() => fileRef.current.click()} style={{ ...btnPrimary(t), width: "100%", padding: "14px" }}>
-                <Download size={16} /> Pilih file Excel / CSV
+                <Download size={16} /> Pilih file .xlsx / .csv
               </button>
             )}
             {err && <div style={{ marginTop: 10, padding: "10px 12px", background: t.danger + "18", border: `1px solid ${t.danger}44`, borderRadius: 8, fontSize: 12.5, color: t.danger }}>{err}</div>}
