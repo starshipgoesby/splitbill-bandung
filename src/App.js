@@ -3,7 +3,7 @@ import {
   Plus, Trash2, Users, Receipt, Scale, X, ArrowRight, Check, Camera,
   Sparkles, Loader2, CreditCard, ChevronRight, Share2, Pencil, Moon, Sun,
   UtensilsCrossed, Car, BedDouble, ShoppingBag, Music, MoreHorizontal, ChevronDown,
-  Download, Link2, Phone, History, BarChart3, Trophy, Target,
+  Download, Link2, Phone, History, BarChart3, Trophy, Target, Smartphone,
 } from "lucide-react";
 
 // ── Supabase ──────────────────────────────────────────────────────────
@@ -1352,6 +1352,8 @@ export default function App() {
   const [tab, setTab]           = useState("expenses");
   const [loading, setLoading]   = useState(true);
   const [saveState, setSaveState] = useState("idle");
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [newName, setNewName]   = useState("");
   const [modal, setModal]       = useState(null);
   const [editAcct, setEditAcct] = useState(null);
@@ -1425,6 +1427,37 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [loading]);
+
+  // Listen for PWA install prompt
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      // Show install banner after a brief delay, only if user hasn't dismissed it before
+      try {
+        if (!localStorage.getItem("sb-install-dismissed")) {
+          setTimeout(() => setShowInstallBanner(true), 3000);
+        }
+      } catch {}
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const doInstall = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted" || outcome === "dismissed") {
+      setInstallPrompt(null);
+      setShowInstallBanner(false);
+    }
+  };
+
+  const dismissInstall = () => {
+    setShowInstallBanner(false);
+    try { localStorage.setItem("sb-install-dismissed", "1"); } catch {}
+  };
 
   // Prompt identity picker when there are members but no myId set
   useEffect(() => {
@@ -1602,6 +1635,19 @@ export default function App() {
         ::-webkit-scrollbar-thumb { background: ${t.border}; border-radius: 3px; }
         body { background: ${t.bg}; }
       `}</style>
+
+      {/* ─── INSTALL BANNER ─── */}
+      {showInstallBanner && installPrompt && (
+        <div style={{ padding: "12px 16px", background: t.accent, color: "#fff", display: "flex", alignItems: "center", gap: 10 }}>
+          <Smartphone size={18} style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Install ke home screen</div>
+            <div style={{ fontSize: 11.5, opacity: 0.9, marginTop: 1 }}>Buka lebih cepat, kayak app biasa</div>
+          </div>
+          <button onClick={doInstall} style={{ padding: "6px 12px", background: "#fff", color: t.accent, border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: "inherit" }}>Install</button>
+          <button onClick={dismissInstall} style={{ padding: 6, background: "transparent", color: "#fff", border: "none", display: "flex", cursor: "pointer", opacity: 0.7 }}><X size={16} /></button>
+        </div>
+      )}
 
       {/* ─── HEADER ─── */}
       <header style={{ padding: "20px 20px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
