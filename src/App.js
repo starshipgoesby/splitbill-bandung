@@ -1376,23 +1376,45 @@ function StatsModal({ tripName, members, expenses, onClose, t }) {
               </>
             )}
 
-            {/* Per-payer */}
-            <div style={labelSt(t)}>Siapa nalangin berapa</div>
-            <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: "10px 14px" }}>
-              {members.map((m) => {
-                const amt = stats.paidBy[m.id] || 0;
-                if (amt === 0) return null;
+            {/* Per-person detail: konsumsi + nalangin + selisih */}
+            <div style={labelSt(t)}>Detail per orang</div>
+            <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+              {members.map((m, mIdx) => {
+                const paid     = stats.paidBy[m.id] || 0;
+                const consumed = stats.consumedBy[m.id] || 0;
+                const net      = paid - consumed;
+                if (paid === 0 && consumed === 0) return null;
+                const maxConsumed = Math.max(...Object.values(stats.consumedBy), 1);
                 return (
-                  <div key={m.id} style={{ padding: "8px 0" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                  <div key={m.id} style={{ padding: "12px 14px", borderTop: mIdx > 0 ? `1px solid ${t.divider}` : "none" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <Avatar name={m.name} color={m.color} size={20} />
-                        <span style={{ color: t.text, fontSize: 13.5, fontWeight: 500 }}>{m.name}</span>
+                        <Avatar name={m.name} color={m.color} size={24} />
+                        <span style={{ color: t.text, fontSize: 14, fontWeight: 600 }}>{m.name}</span>
                       </span>
-                      <span style={{ fontWeight: 600, fontSize: 13.5, color: t.text, ...num }}>{rp(amt)}</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: net > 0 ? t.success : net < 0 ? t.danger : t.muted, ...num }}>
+                        {net > 0 ? "+" : ""}{rp(net)}
+                      </span>
                     </div>
-                    <div style={{ height: 5, background: t.subtle, borderRadius: 3, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${(amt / maxPaid) * 100}%`, background: m.color, transition: "width .3s" }} />
+                    {/* Konsumsi */}
+                    <div style={{ marginBottom: 7 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: t.muted, marginBottom: 3 }}>
+                        <span>Konsumsi</span>
+                        <span style={{ color: t.text, fontWeight: 600, ...num }}>{rp(consumed)}</span>
+                      </div>
+                      <div style={{ height: 4, background: t.subtle, borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${(consumed / maxConsumed) * 100}%`, background: m.color, transition: "width .3s" }} />
+                      </div>
+                    </div>
+                    {/* Nalangin */}
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: t.muted, marginBottom: 3 }}>
+                        <span>Nalangin</span>
+                        <span style={{ color: t.text, fontWeight: 600, ...num }}>{rp(paid)}</span>
+                      </div>
+                      <div style={{ height: 4, background: t.subtle, borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${(paid / maxPaid) * 100}%`, background: m.color, opacity: 0.55, transition: "width .3s" }} />
+                      </div>
                     </div>
                   </div>
                 );
