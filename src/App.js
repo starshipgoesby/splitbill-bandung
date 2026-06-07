@@ -597,6 +597,9 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
   const [editAmt, setEditAmt]   = useState(String(expense.amount));
   const [editPaid, setEditPaid] = useState(expense.paidBy);
   const [editCat, setEditCat]   = useState(expense.category || "lainnya");
+  const [editNewPhoto, setEditNewPhoto] = useState(null);   // dataURL of new photo
+  const [editPhotoRemoved, setEditPhotoRemoved] = useState(false);
+  const editFileRef = useRef();
 
   useEffect(() => {
     if (!expense.hasReceipt) return;
@@ -608,7 +611,16 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
   const nameOf  = (id) => members.find((m) => m.id === id)?.name  || "?";
   const colorOf = (id) => members.find((m) => m.id === id)?.color || "#999";
 
-  const saveEdit = () => {
+  const handleEditPhoto = async (file) => {
+    if (!file) return;
+    try {
+      const url = await readAsDataURL(file);
+      setEditNewPhoto(url);
+      setEditPhotoRemoved(false);
+    } catch {}
+  };
+
+  const saveEdit = async () => {
     let shares, amount;
     if (expense.items && expense.items.length > 0) {
       const charges = expense.charges || { tax: 0, service: 0, discount: 0 };
@@ -623,8 +635,36 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
       amount = amt;
     }
     if (!editDesc.trim() || amount <= 0) return;
-    onUpdate({ ...expense, desc: editDesc.trim(), amount, paidBy: editPaid, shares, category: editCat });
+
+    // Handle photo changes
+    let hasReceipt = expense.hasReceipt;
+    if (editPhotoRemoved && !editNewPhoto) {
+      // User removed existing photo
+      try { await sb.deletePhoto(expense.id); } catch {}
+      hasReceipt = false;
+    } else if (editNewPhoto) {
+      // User uploaded new photo (replace or add)
+      try { await sb.savePhoto(expense.id, editNewPhoto); } catch {}
+      hasReceipt = true;
+      // Also update local photo state so the view refreshes
+      setPhoto(editNewPhoto);
+      setPhotoState("ok");
+    }
+
+    onUpdate({ ...expense, desc: editDesc.trim(), amount, paidBy: editPaid, shares, category: editCat, hasReceipt });
     setEditing(false);
+    setEditNewPhoto(null);
+    setEditPhotoRemoved(false);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setEditNewPhoto(null);
+    setEditPhotoRemoved(false);
+    setEditDesc(expense.desc);
+    setEditAmt(String(expense.amount));
+    setEditPaid(expense.paidBy);
+    setEditCat(expense.category || "lainnya");
   };
 
   const cat = catOf(expense.category);
@@ -645,7 +685,7 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
                 : <h3 style={{ ...mTitle(t), fontSize: 24 }}>{expense.desc}</h3>}
             </div>
             <div style={{ display: "flex", gap: 4 }}>
-              <button onClick={() => setEditing(!editing)} style={{ ...btnX(t), color: editing ? t.accent : t.muted }}><Pencil size={16} /></button>
+              <button onClick={() => editing ? cancelEdit() : setEditing(true)} style={{ ...btnX(t), color: editing ? t.accent : t.muted }}><Pencil size={16} /></button>
               <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
             </div>
           </div>
@@ -669,6 +709,38 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
               <select value={editPaid} onChange={(e) => setEditPaid(e.target.value)} style={inputSt(t)}>
                 {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
+              {/* Photo upload in edit mode */}
+              <div style={{ ...labelSt(t), display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span>Foto {expense.scanned ? "struk" : "bukti"}</span>
+                <span style={{ textTransform: "none", letterSpacing: 0, fontSize: 11, fontWeight: 400 }}>opsional</span>
+              </div>
+              <input ref={editFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleEditPhoto(e.target.files[0])} />
+              {editNewPhoto ? (
+                <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${t.border}` }}>
+                  <img src={editNewPhoto} alt="Bukti baru" style={{ width: "100%", display: "block", maxHeight: 200, objectFit: "contain", background: t.subtle }} />
+                  <div style={{ position: "absolute", top: 8, left: 8, padding: "3px 8px", background: t.accent, color: "#fff", borderRadius: 6, fontSize: 10.5, fontWeight: 700 }}>FOTO BARU</div>
+                  <button onClick={() => setEditNewPhoto(null)} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: 28, border: "none", background: "#00000099", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={14} /></button>
+                </div>
+              ) : expense.hasReceipt && !editPhotoRemoved && photoState === "ok" && photo ? (
+                <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${t.border}` }}>
+                  <img src={photo} alt="Bukti" style={{ width: "100%", display: "block", maxHeight: 200, objectFit: "contain", background: t.subtle }} />
+                  <div style={{ position: "absolute", bottom: 8, right: 8, display: "flex", gap: 6 }}>
+                    <button onClick={() => editFileRef.current.click()} style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: "#000000aa", color: "#fff", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4 }}><Pencil size={10} /> Ganti</button>
+                    <button onClick={() => setEditPhotoRemoved(true)} style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: t.danger, color: "#fff", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4 }}><Trash2 size={10} /> Hapus</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => editFileRef.current.click()} style={{ width: "100%", padding: "11px", border: `1px dashed ${t.border}`, background: "transparent", borderRadius: 10, color: t.muted, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", fontFamily: "inherit" }}>
+                  <Paperclip size={13} /> {editPhotoRemoved ? "Lampirkan foto baru" : "Lampirkan foto (struk/mutasi/transfer)"}
+                </button>
+              )}
+              {editPhotoRemoved && !editNewPhoto && (
+                <div style={{ marginTop: 6, fontSize: 11.5, color: t.danger, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span>Foto akan dihapus saat disimpan</span>
+                  <button onClick={() => setEditPhotoRemoved(false)} style={{ border: "none", background: "transparent", color: t.accent, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", fontSize: 11.5 }}>Batal</button>
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
                 <button onClick={() => { onDelete(expense.id); onClose(); }} style={{ ...btnSecondary(t), color: t.danger, borderColor: t.danger + "44" }}><Trash2 size={14} /> Hapus</button>
                 <button onClick={saveEdit} style={btnPrimary(t)}>Simpan perubahan</button>
