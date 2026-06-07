@@ -599,7 +599,24 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
   const [editCat, setEditCat]   = useState(expense.category || "lainnya");
   const [editNewPhoto, setEditNewPhoto] = useState(null);   // dataURL of new photo
   const [editPhotoRemoved, setEditPhotoRemoved] = useState(false);
+  const [editItems, setEditItems]     = useState(() => (expense.items || []).map(it => ({ ...it, id: it.id || uid() })));
+  const [editCharges, setEditCharges] = useState(() => expense.charges || { tax: 0, service: 0, discount: 0 });
   const editFileRef = useRef();
+
+  // ── Item editing helpers (only used in edit mode) ────────────
+  const editPreview = useMemo(() => {
+    if (!editItems.length) return { shares: {}, amount: 0 };
+    return computeReceiptShares(editItems, editCharges, members);
+  }, [editItems, editCharges, members]);
+
+  const setEditItemField = (id, field, val) =>
+    setEditItems(its => its.map(it => it.id !== id ? it : { ...it, [field]: val }));
+  const toggleEditItemWho = (iid, mid) =>
+    setEditItems(its => its.map(it =>
+      it.id !== iid ? it : { ...it, who: (it.who || []).includes(mid) ? (it.who || []).filter(x => x !== mid) : [...(it.who || []), mid] }
+    ));
+  const removeEditItem = (id) => setEditItems(its => its.filter(it => it.id !== id));
+  const addEditItem    = () => setEditItems(its => [...its, { id: uid(), name: "", price: 0, who: members.map(m => m.id) }]);
 
   useEffect(() => {
     if (!expense.hasReceipt) return;
@@ -621,11 +638,16 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
   };
 
   const saveEdit = async () => {
-    let shares, amount;
-    if (expense.items && expense.items.length > 0) {
-      const charges = expense.charges || { tax: 0, service: 0, discount: 0 };
-      const result = computeReceiptShares(expense.items, charges, members);
+    let shares, amount, finalItems, finalCharges;
+    const hasItems = editItems.length > 0;
+
+    if (hasItems) {
+      const validItems = editItems.filter(it => it.name.trim() && it.price > 0 && (it.who || []).length > 0);
+      if (!validItems.length) return;
+      const result = computeReceiptShares(validItems, editCharges, members);
       shares = result.shares; amount = result.amount;
+      finalItems   = validItems.map(({ name, price, who }) => ({ name, price, who }));
+      finalCharges = { ...editCharges };
     } else {
       const amt = parseInt(String(editAmt).replace(/\D/g, ""), 10);
       if (!editDesc.trim() || !amt) return;
@@ -633,6 +655,8 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
       const per = amt / (among.length || 1);
       shares = {}; among.forEach((id) => (shares[id] = per));
       amount = amt;
+      finalItems = undefined;
+      finalCharges = undefined;
     }
     if (!editDesc.trim() || amount <= 0) return;
 
@@ -651,7 +675,10 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
       setPhotoState("ok");
     }
 
-    onUpdate({ ...expense, desc: editDesc.trim(), amount, paidBy: editPaid, shares, category: editCat, hasReceipt });
+    const updated = { ...expense, desc: editDesc.trim(), amount, paidBy: editPaid, shares, category: editCat, hasReceipt };
+    if (finalItems !== undefined)   updated.items   = finalItems;
+    if (finalCharges !== undefined) updated.charges = finalCharges;
+    onUpdate(updated);
     setEditing(false);
     setEditNewPhoto(null);
     setEditPhotoRemoved(false);
@@ -665,6 +692,8 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
     setEditAmt(String(expense.amount));
     setEditPaid(expense.paidBy);
     setEditCat(expense.category || "lainnya");
+    setEditItems((expense.items || []).map(it => ({ ...it, id: it.id || uid() })));
+    setEditCharges(expense.charges || { tax: 0, service: 0, discount: 0 });
   };
 
   const cat = catOf(expense.category);
@@ -694,16 +723,62 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
             <>
               <div style={labelSt(t)}>Kategori</div>
               <CatChips value={editCat} onChange={setEditCat} t={t} />
-              {!(expense.items?.length > 0) && (
+              {editItems.length === 0 ? (
                 <>
                   <div style={labelSt(t)}>Jumlah</div>
-                  <input value={parseInt(String(editAmt).replace(/\D/g,"")||"0",10).toLocaleString("id-ID")} onChange={(e) => setEditAmt(e.target.value.replace(/\D/g,""))} inputMode="numeric" style={{ ...inputSt(t), ...num }} />
+                  <input value={parseInt(String(editAmt).replace(/\D/g,"")||"0",10).toLocaleString("id-ID")} onChange={(e) => setEditAmt(e.target.value.replace(/\D/g,""))} inputMode="numeric" placeholder="0" style={{ ...inputSt(t), fontSize: 17, fontWeight: 600, ...num }} />
                 </>
-              )}
-              {expense.items?.length > 0 && (
-                <div style={{ marginTop: 14, padding: "10px 12px", background: t.accentSoft, borderRadius: 8, fontSize: 12.5, color: t.textSoft, lineHeight: 1.5, border: `1px solid ${t.accent}22` }}>
-                  Jumlah otomatis dari rincian item. Edit per-item di bawah untuk ubah pembagian.
-                </div>
+              ) : (
+                <>
+                  <div style={{ ...labelSt(t), display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span>Rincian item</span>
+                    <span style={{ textTransform: "none", letterSpacing: 0, fontSize: 11, fontWeight: 400 }}>tap nama untuk pilih</span>
+                  </div>
+                  <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+                    {editItems.map((it, idx) => (
+                      <div key={it.id} style={{ padding: "10px 12px", borderTop: idx > 0 ? `1px solid ${t.divider}` : "none" }}>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 7 }}>
+                          <input value={it.name} onChange={(e) => setEditItemField(it.id, "name", e.target.value)} placeholder="Nama item" style={{ ...inputSt(t), flex: 1, padding: "6px 9px", fontSize: 13.5, border: `1px solid ${t.divider}` }} />
+                          <input value={(it.price || 0).toLocaleString("id-ID")} onChange={(e) => setEditItemField(it.id, "price", parseInt(e.target.value.replace(/\D/g,"")||"0",10))} inputMode="numeric" placeholder="0" style={{ ...inputSt(t), width: 88, padding: "6px 9px", fontSize: 13.5, textAlign: "right", border: `1px solid ${t.divider}`, ...num }} />
+                          <button onClick={() => removeEditItem(it.id)} style={{ border: "none", background: "transparent", color: t.danger, padding: 5, display: "flex", cursor: "pointer", borderRadius: 6 }}><X size={14} /></button>
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                          {members.map((m) => {
+                            const on = (it.who || []).includes(m.id);
+                            return (
+                              <button key={m.id} onClick={() => toggleEditItemWho(it.id, m.id)} style={{ padding: "4px 9px", border: `1px solid ${on ? m.color : t.border}`, borderRadius: 7, background: on ? m.color + "18" : "transparent", fontSize: 12, fontWeight: 600, color: on ? m.color : t.muted, cursor: "pointer", fontFamily: "inherit" }}>
+                                {m.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ padding: "10px 12px", borderTop: `1px solid ${t.divider}`, background: t.subtle }}>
+                      {[["Pajak","tax"],["Service","service"],["Diskon","discount"]].map(([label, key]) => (
+                        <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13.5, color: t.muted }}>
+                          <span>{label}</span>
+                          <input value={(editCharges[key]||0).toLocaleString("id-ID")} inputMode="numeric"
+                            onChange={(e) => setEditCharges({ ...editCharges, [key]: parseInt(e.target.value.replace(/\D/g,"")||"0",10) })}
+                            style={{ width: 100, padding: "5px 8px", border: `1px solid ${t.border}`, borderRadius: 7, fontSize: 13, textAlign: "right", background: t.surface, color: t.text, fontFamily: "inherit", ...num }} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={addEditItem} style={{ width: "100%", marginTop: 8, padding: "9px", border: `1px dashed ${t.border}`, background: "transparent", borderRadius: 10, color: t.muted, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", fontFamily: "inherit" }}>
+                    <Plus size={13} /> Tambah item
+                  </button>
+                  {editPreview.amount > 0 && (
+                    <div style={{ marginTop: 12, padding: "12px 14px", background: t.subtle, border: `1px solid ${t.border}`, borderRadius: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, marginBottom: 6, color: t.text, fontSize: 14.5 }}><span>Total</span><span style={num}>{rp(editPreview.amount)}</span></div>
+                      {members.filter(m => editPreview.shares[m.id]).map(m => (
+                        <div key={m.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: t.muted, padding: "2px 0", ...num }}>
+                          <span>{m.name}</span><span>{rp(editPreview.shares[m.id])}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
               <div style={labelSt(t)}>Dibayar oleh</div>
               <select value={editPaid} onChange={(e) => setEditPaid(e.target.value)} style={inputSt(t)}>
