@@ -257,7 +257,7 @@ function buildCSV(tripName, members, expenses, balances, tx) {
   lines.push(["", "TOTAL", "", "", grandTotal, ...memberTotals].map(esc).join(","));
   lines.push("");
 
-  // Section 2: Items per expense (only scanned ones)
+  // Section 2: Items per expense (any expense with items array)
   const withItems = expenses.filter((e) => e.items?.length);
   if (withItems.length) {
     lines.push("RINCIAN ITEM");
@@ -654,13 +654,13 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
             <>
               <div style={labelSt(t)}>Kategori</div>
               <CatChips value={editCat} onChange={setEditCat} t={t} />
-              {!expense.scanned && (
+              {!(expense.items?.length > 0) && (
                 <>
                   <div style={labelSt(t)}>Jumlah</div>
                   <input value={parseInt(String(editAmt).replace(/\D/g,"")||"0",10).toLocaleString("id-ID")} onChange={(e) => setEditAmt(e.target.value.replace(/\D/g,""))} inputMode="numeric" style={{ ...inputSt(t), ...num }} />
                 </>
               )}
-              {expense.scanned && (
+              {expense.items?.length > 0 && (
                 <div style={{ marginTop: 14, padding: "10px 12px", background: t.accentSoft, borderRadius: 8, fontSize: 12.5, color: t.textSoft, lineHeight: 1.5, border: `1px solid ${t.accent}22` }}>
                   Jumlah otomatis dari rincian item. Edit per-item di bawah untuk ubah pembagian.
                 </div>
@@ -690,10 +690,10 @@ function DetailModal({ expense, members, onClose, onUpdate, onDelete, t }) {
               {/* Photo */}
               {expense.hasReceipt && (
                 <>
-                  <div style={labelSt(t)}>Foto struk</div>
+                  <div style={labelSt(t)}>{expense.scanned ? "Foto struk" : "Foto bukti"}</div>
                   <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 6, overflow: "hidden" }}>
                     {photoState === "loading" && <div style={{ padding: "40px 0", textAlign: "center", color: t.muted }}><Loader2 size={20} style={{ animation: "spin 1s linear infinite" }} /></div>}
-                    {photoState === "ok" && photo && <img src={photo} alt="Struk" style={{ width: "100%", borderRadius: 8, display: "block", maxHeight: 400, objectFit: "contain" }} />}
+                    {photoState === "ok" && photo && <img src={photo} alt="Bukti" style={{ width: "100%", borderRadius: 8, display: "block", maxHeight: 400, objectFit: "contain" }} />}
                     {photoState === "missing" && <div style={{ padding: "30px 0", textAlign: "center", color: t.muted, fontSize: 13 }}>Foto tidak tersedia</div>}
                   </div>
                 </>
