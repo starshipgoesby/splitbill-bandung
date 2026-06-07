@@ -3,7 +3,7 @@ import {
   Plus, Trash2, Users, Receipt, Scale, X, ArrowRight, Check, Camera,
   Sparkles, Loader2, CreditCard, ChevronRight, Share2, Pencil, Moon, Sun,
   UtensilsCrossed, Car, BedDouble, ShoppingBag, Music, MoreHorizontal, ChevronDown,
-  Download, Link2, Phone, History, BarChart3, Trophy, Target, Smartphone, Shuffle,
+  Download, Link2, Phone, History, BarChart3, Trophy, Target, Smartphone, Shuffle, Paperclip,
 } from "lucide-react";
 
 // ── Supabase ──────────────────────────────────────────────────────────
@@ -949,41 +949,207 @@ Periksa hasil sebelum balas: pastikan jumlah items.price + tax + service - disco
 
 // ── Manual Modal ──────────────────────────────────────────────────────
 function ManualModal({ members, onClose, onSave, t }) {
-  const [desc, setDesc]     = useState("");
-  const [amount, setAmount] = useState("");
-  const [paidBy, setPaidBy] = useState(members[0]?.id || "");
-  const [among, setAmong]   = useState(members.map((m) => m.id));
-  const [cat, setCat]       = useState("lainnya");
+  const [desc, setDesc]       = useState("");
+  const [amount, setAmount]   = useState("");
+  const [paidBy, setPaidBy]   = useState(members[0]?.id || "");
+  const [among, setAmong]     = useState(members.map((m) => m.id));
+  const [cat, setCat]         = useState("lainnya");
+  const [mode, setMode]       = useState("simple"); // "simple" | "items"
+  const [items, setItems]     = useState([]);
+  const [charges, setCharges] = useState({ tax: 0, service: 0, discount: 0 });
+  const [photoUrl, setPhotoUrl] = useState(null);
+  const fileRef  = useRef();
+
   const toggle = (id) => setAmong((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
-  const save = () => {
-    const amt = parseInt(String(amount).replace(/\D/g,""),10);
-    if (!desc.trim() || !amt || !paidBy || !among.length) return;
-    const per = amt / among.length;
-    const shares = {}; among.forEach((id) => (shares[id] = per));
-    onSave({ id: uid(), desc: desc.trim(), amount: amt, paidBy, shares, category: cat, at: Date.now() }, null);
+
+  const addItem = () => setItems([...items, { id: uid(), name: "", price: 0, who: members.map(m => m.id) }]);
+  const removeItem = (id) => setItems(items.filter(it => it.id !== id));
+  const setItemField = (id, f, v) => setItems(items.map(it => it.id !== id ? it : { ...it, [f]: v }));
+  const toggleWho = (iid, mid) => setItems(items.map(it =>
+    it.id !== iid ? it : { ...it, who: it.who.includes(mid) ? it.who.filter(x => x !== mid) : [...it.who, mid] }
+  ));
+
+  const itemsPreview = useMemo(() =>
+    items.length > 0 ? computeReceiptShares(items, charges, members) : { shares: {}, amount: 0 },
+    [items, charges, members]
+  );
+
+  const handlePhoto = async (file) => {
+    if (!file) return;
+    try {
+      const url = await readAsDataURL(file);
+      setPhotoUrl(url);
+    } catch {}
   };
+
+  const save = () => {
+    if (!desc.trim() || !paidBy) return;
+
+    if (mode === "items" && items.length > 0) {
+      const validItems = items.filter(it => it.name.trim() && it.price > 0 && it.who.length > 0);
+      if (!validItems.length) return;
+      const { shares, amount } = computeReceiptShares(validItems, charges, members);
+      if (amount <= 0 || !Object.keys(shares).length) return;
+      onSave({
+        id: uid(), desc: desc.trim(), amount, paidBy, shares,
+        category: cat, at: Date.now(),
+        items: validItems.map(({ name, price, who }) => ({ name, price, who })),
+        charges: { ...charges },
+        hasReceipt: !!photoUrl,
+      }, photoUrl);
+    } else {
+      const amt = parseInt(String(amount).replace(/\D/g, ""), 10);
+      if (!amt || !among.length) return;
+      const per = amt / among.length;
+      const shares = {}; among.forEach(id => (shares[id] = per));
+      onSave({
+        id: uid(), desc: desc.trim(), amount: amt, paidBy, shares,
+        category: cat, at: Date.now(),
+        hasReceipt: !!photoUrl,
+      }, photoUrl);
+    }
+  };
+
+  const canSave = mode === "items"
+    ? desc.trim() && items.some(it => it.name.trim() && it.price > 0 && it.who.length > 0)
+    : desc.trim() && parseInt(String(amount).replace(/\D/g, ""), 10) > 0 && among.length > 0;
+
+  const tabSt = (active) => ({
+    flex: 1, padding: "9px 8px", border: "none",
+    background: active ? t.surface : "transparent",
+    color: active ? t.text : t.muted,
+    fontWeight: 600, fontSize: 13, borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+  });
+
   return (
     <div style={ov} onClick={onClose}>
-      <div style={modalSt(t)} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+      <div style={{ ...modalSt(t), maxHeight: "92vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <h3 style={mTitle(t)}>Pengeluaran baru</h3>
           <button onClick={onClose} style={btnX(t)}><X size={18} /></button>
         </div>
-        <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Untuk apa? mis. Bensin" style={inputSt(t)} />
-        <input value={amount ? parseInt(String(amount).replace(/\D/g,"")||"0",10).toLocaleString("id-ID") : ""} onChange={(e) => setAmount(e.target.value.replace(/\D/g,""))} placeholder="Jumlah" inputMode="numeric" style={{ ...inputSt(t), marginTop: 8, ...num }} />
+
+        <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Untuk apa? mis. Bensin" style={{ ...inputSt(t), fontSize: 16, fontWeight: 600 }} autoFocus />
+
+        {/* Mode toggle */}
+        <div style={{ display: "flex", gap: 2, padding: 3, background: t.subtle, border: `1px solid ${t.border}`, borderRadius: 10, marginTop: 14 }}>
+          <button onClick={() => setMode("simple")} style={tabSt(mode==="simple")}>Bagi rata</button>
+          <button onClick={() => setMode("items")} style={tabSt(mode==="items")}>Per item</button>
+        </div>
+
+        {/* SIMPLE MODE */}
+        {mode === "simple" && (
+          <>
+            <div style={labelSt(t)}>Jumlah</div>
+            <input value={amount ? parseInt(String(amount).replace(/\D/g,"")||"0",10).toLocaleString("id-ID") : ""}
+              onChange={(e) => setAmount(e.target.value.replace(/\D/g,""))}
+              placeholder="0" inputMode="numeric"
+              style={{ ...inputSt(t), fontSize: 17, fontWeight: 600, ...num }} />
+            <div style={labelSt(t)}>Dibagi ke</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {members.map((m) => {
+                const on = among.includes(m.id);
+                return (
+                  <button key={m.id} onClick={() => toggle(m.id)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 12px", border: `1px solid ${on ? m.color : t.border}`, borderRadius: 8, background: on ? m.color + "18" : t.surface, fontSize: 13, fontWeight: 600, color: on ? m.color : t.muted, cursor: "pointer", fontFamily: "inherit" }}>
+                    {on && <Check size={12} />}{m.name}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* ITEMS MODE */}
+        {mode === "items" && (
+          <>
+            <div style={{ ...labelSt(t), display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span>Item</span>
+              <span style={{ textTransform: "none", letterSpacing: 0, fontSize: 11, fontWeight: 400 }}>tap nama untuk pilih</span>
+            </div>
+            <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: "hidden" }}>
+              {items.length === 0 && (
+                <div style={{ padding: "16px", textAlign: "center", color: t.muted, fontSize: 13 }}>
+                  Belum ada item. Tap tombol di bawah untuk tambah.
+                </div>
+              )}
+              {items.map((it, idx) => (
+                <div key={it.id} style={{ padding: "10px 12px", borderTop: idx > 0 ? `1px solid ${t.divider}` : "none" }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 7 }}>
+                    <input value={it.name} onChange={(e) => setItemField(it.id, "name", e.target.value)} placeholder="Nama item" style={{ ...inputSt(t), flex: 1, padding: "6px 9px", fontSize: 13.5, border: `1px solid ${t.divider}` }} />
+                    <input value={(it.price || 0).toLocaleString("id-ID")} onChange={(e) => setItemField(it.id, "price", parseInt(e.target.value.replace(/\D/g,"")||"0",10))} inputMode="numeric" placeholder="0" style={{ ...inputSt(t), width: 88, padding: "6px 9px", fontSize: 13.5, textAlign: "right", border: `1px solid ${t.divider}`, ...num }} />
+                    <button onClick={() => removeItem(it.id)} style={{ border: "none", background: "transparent", color: t.danger, padding: 5, display: "flex", cursor: "pointer", borderRadius: 6 }}><X size={14} /></button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {members.map((m) => {
+                      const on = it.who.includes(m.id);
+                      return (
+                        <button key={m.id} onClick={() => toggleWho(it.id, m.id)} style={{ padding: "4px 9px", border: `1px solid ${on ? m.color : t.border}`, borderRadius: 7, background: on ? m.color + "18" : "transparent", fontSize: 12, fontWeight: 600, color: on ? m.color : t.muted, cursor: "pointer", fontFamily: "inherit" }}>
+                          {m.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              {items.length > 0 && (
+                <div style={{ padding: "10px 12px", borderTop: `1px solid ${t.divider}`, background: t.subtle }}>
+                  {[["Pajak","tax"],["Service","service"],["Diskon","discount"]].map(([label, key]) => (
+                    <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13.5, color: t.muted }}>
+                      <span>{label}</span>
+                      <input value={(charges[key]||0).toLocaleString("id-ID")} inputMode="numeric"
+                        onChange={(e) => setCharges({ ...charges, [key]: parseInt(e.target.value.replace(/\D/g,"")||"0",10) })}
+                        style={{ width: 100, padding: "5px 8px", border: `1px solid ${t.border}`, borderRadius: 7, fontSize: 13, textAlign: "right", background: t.surface, color: t.text, fontFamily: "inherit", ...num }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button onClick={addItem} style={{ width: "100%", marginTop: 8, padding: "9px", border: `1px dashed ${t.border}`, background: "transparent", borderRadius: 10, color: t.muted, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", fontFamily: "inherit" }}>
+              <Plus size={13} /> Tambah item
+            </button>
+
+            {items.length > 0 && itemsPreview.amount > 0 && (
+              <div style={{ marginTop: 14, padding: "12px 14px", background: t.subtle, border: `1px solid ${t.border}`, borderRadius: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, marginBottom: 6, color: t.text, fontSize: 14.5 }}><span>Total</span><span style={num}>{rp(itemsPreview.amount)}</span></div>
+                {members.filter(m => itemsPreview.shares[m.id]).map(m => (
+                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: t.muted, padding: "2px 0", ...num }}>
+                    <span>{m.name}</span><span>{rp(itemsPreview.shares[m.id])}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
         <div style={labelSt(t)}>Kategori</div>
         <CatChips value={cat} onChange={setCat} t={t} />
+
         <div style={labelSt(t)}>Dibayar oleh</div>
         <select value={paidBy} onChange={(e) => setPaidBy(e.target.value)} style={inputSt(t)}>
           {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
-        <div style={labelSt(t)}>Dibagi ke</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {members.map((m) => { const on = among.includes(m.id); return (<button key={m.id} onClick={() => toggle(m.id)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 12px", border: `1px solid ${on ? m.color : t.border}`, borderRadius: 8, background: on ? m.color + "18" : t.surface, fontSize: 13, fontWeight: 600, color: on ? m.color : t.muted, cursor: "pointer", fontFamily: "inherit" }}>{on && <Check size={12} />}{m.name}</button>); })}
+
+        {/* Foto bukti */}
+        <div style={{ ...labelSt(t), display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span>Foto bukti</span>
+          <span style={{ textTransform: "none", letterSpacing: 0, fontSize: 11, fontWeight: 400 }}>opsional</span>
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handlePhoto(e.target.files[0])} />
+        {photoUrl ? (
+          <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${t.border}` }}>
+            <img src={photoUrl} alt="Bukti" style={{ width: "100%", display: "block", maxHeight: 200, objectFit: "contain", background: t.subtle }} />
+            <button onClick={() => setPhotoUrl(null)} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: 28, border: "none", background: "#00000099", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={14} /></button>
+          </div>
+        ) : (
+          <button onClick={() => fileRef.current.click()} style={{ width: "100%", padding: "11px", border: `1px dashed ${t.border}`, background: "transparent", borderRadius: 10, color: t.muted, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", fontFamily: "inherit" }}>
+            <Paperclip size={13} /> Lampirkan foto (struk/mutasi/transfer)
+          </button>
+        )}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
           <button onClick={onClose} style={btnSecondary(t)}>Batal</button>
-          <button onClick={save} style={btnPrimary(t)}>Simpan</button>
+          <button onClick={save} disabled={!canSave} style={{ ...btnPrimary(t), opacity: canSave ? 1 : 0.5 }}>Simpan</button>
         </div>
       </div>
     </div>
