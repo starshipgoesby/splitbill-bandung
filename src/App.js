@@ -7,8 +7,8 @@ import {
 } from "lucide-react";
 
 // ── Supabase ──────────────────────────────────────────────────────────
-const SUPABASE_URL = "https://fragtbguzxzjyzdtemna.supabase.co";
-const SUPABASE_KEY = "sb_publishable_oMwpDwsEcqM5B8qjSVUvfA_yg973sSC";
+const SUPABASE_URL = "https://diyaoevzbwjqgztzyvvg.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpeWFvZXZ6YndqcWd6dHp5dnZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczNjYzMjAsImV4cCI6MjEwMjk0MjMyMH0.SswjWmnQW1vDEfMBRMaM0Vc1N2O1IElU-77L9nREu6Q";
 const POLL_MS = 30000;
 const MAX_RETRIES = 3;
 
